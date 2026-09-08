@@ -1,17 +1,12 @@
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 
-dotenv.config();
+// MongoDB Atlas connection with your cluster
+const MONGODB_URI = process.env.MONGODB_URI || 
+  'mongodb+srv://jock-nfc:UClDoI6XVAv2Gj1R@cluster0.73lq38l.mongodb.net/tapreview?retryWrites=true&w=majority&appName=Cluster0';
 
 export const connectDB = async () => {
   try {
-    const mongoURI = process.env.MONGODB_URI;
-    
-    if (!mongoURI) {
-      throw new Error('MONGODB_URI is not defined in environment variables');
-    }
-
-    const conn = await mongoose.connect(mongoURI, {
+    const conn = await mongoose.connect(MONGODB_URI, {
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
@@ -25,13 +20,12 @@ export const connectDB = async () => {
   }
 };
 
-// Handle connection events
 mongoose.connection.on('error', (err) => {
   console.error('MongoDB connection error:', err);
 });
 
 mongoose.connection.on('disconnected', () => {
-  console.warn('MongoDB disconnected. Attempting to reconnect...');
+  console.warn('MongoDB disconnected');
 });
 
 process.on('SIGINT', async () => {
