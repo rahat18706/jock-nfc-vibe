@@ -2,9 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
+import mongoSanitize from 'express-mongo-sanitize';
 import { connectDB } from './config/db.js';
+import { validateEnv, envConfig } from './config/env.js';
+import logger, { requestLogger, errorLogger } from './config/logger.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { apiLimiter, authLimiter, securityHeaders, detectBot, requestSizeLimiter } from './middleware/security.js';
 
 // Route imports
 import authRoutes from './routes/auth.js';
@@ -15,59 +18,111 @@ import adminRoutes from './routes/admin.js';
 import orderRoutes from './routes/orders.js';
 import analyticsRoutes from './routes/analytics.js';
 
-dotenv.config();
+// Validate environment variables
+validateEnv();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
 // ============================================
-// MIDDLEWARE
+// SECURITY MIDDLEWARE
 // ============================================
 
-// Security
+// Security headers
+app.use(securityHeaders);
+
+// Helmet for additional security headers
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+  crossOriginEmbedderPolicy: false,
 }));
 
-// CORS
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+// MongoDB injection protection
+app.use(mongoSanitize());
+
+// CORS - restrict to specific origins in production
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production'
+    ? [envConfig.frontendUrl]
+    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
+  optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
 
-// Body parsing
+// Bot detection
+app.use(detectBot);
+
+// Request size limiter
+app.use(requestSizeLimiter);
+
+// ============================================
+// PARSING MIDDLEWARE
+// ============================================
+
+// Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Rate limiting (general)
-const generalLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-  message: { error: 'Too many requests, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use('/api/', generalLimiter);
+// ============================================
+// LOGGING MIDDLEWARE
+// ============================================
+
+// Request logging (skip health checks)
+app.use(requestLogger);
+
+// ============================================
+// RATE LIMITING
+// ============================================
+
+// General API rate limiter
+app.use('/api/', apiLimiter);
 
 // Stricter rate limit for auth endpoints
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: 'Too many login attempts, please try again after 15 minutes.' },
-  skipSuccessfulRequests: true,
-});
 app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
 
 // ============================================
 // API ROUTES
 // ============================================
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Health check endpoint (for monitoring and load balancers)
+app.get('/api/health', async (req, res) => {
+  const healthcheck = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development',
+    version: process.env.npm_package_version || '1.0.0',
+    memory: {
+      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+    },
+    database: 'unknown',
+  };
+
+  try {
+    // Check database connection
+    const mongoose = (await import('mongoose')).default;
+    if (mongoose.connection.readyState === 1) {
+      healthcheck.database = 'connected';
+    } else {
+      healthcheck.database = 'disconnected';
+      healthcheck.status = 'degraded';
+    }
+
+    const statusCode = healthcheck.status === 'ok' ? 200 : 503;
+    res.status(statusCode).json(healthcheck);
+  } catch (error) {
+    healthcheck.database = 'error';
+    healthcheck.status = 'error';
+    healthcheck.error = error.message;
+    res.status(503).json(healthcheck);
+  }
 });
 
 // Auth routes (login, register, password reset)
@@ -96,24 +151,13 @@ app.use('/api/analytics', analyticsRoutes);
 // ============================================
 
 // 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
+app.use(notFoundHandler);
+
+// Error logging middleware
+app.use(errorLogger);
 
 // Global error handler
-app.use((err, req, res, next) => {
-  console.error('Error:', err.message);
-  
-  const statusCode = err.statusCode || 500;
-  const message = process.env.NODE_ENV === 'production' 
-    ? 'Internal server error' 
-    : err.message;
-
-  res.status(statusCode).json({
-    error: message,
-    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
-  });
-});
+app.use(errorHandler);
 
 // ============================================
 // START SERVER
@@ -124,17 +168,20 @@ const startServer = async () => {
     // Connect to MongoDB Atlas
     await connectDB();
     
+    const PORT = envConfig.port;
+    
     app.listen(PORT, () => {
-      console.log(`
+      logger.info(`
 ╔══════════════════════════════════════════╗
 ║     TapReview Backend API Server         ║
 ║     Port: ${PORT}                          ║
-║     Env: ${process.env.NODE_ENV || 'development'}                     ║
+║     Env: ${envConfig.nodeEnv}                     ║
 ╚══════════════════════════════════════════╝
       `);
+      logger.info(`Server started successfully on port ${PORT}`);
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.error('Failed to start server:', { error: error.message, stack: error.stack });
     process.exit(1);
   }
 };

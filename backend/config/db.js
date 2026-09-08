@@ -1,21 +1,39 @@
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
 
-// MongoDB Atlas connection with your cluster
-const MONGODB_URI = process.env.MONGODB_URI || 
-  'mongodb+srv://jock-nfc:UClDoI6XVAv2Gj1R@cluster0.73lq38l.mongodb.net/tapreview?retryWrites=true&w=majority&appName=Cluster0';
+dotenv.config();
+
+// Security: Never hardcode credentials - use environment variables only
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  console.error('❌ CRITICAL: MONGODB_URI environment variable is not set');
+  console.error('   Please set MONGODB_URI in your .env file');
+  process.exit(1);
+}
 
 export const connectDB = async () => {
   try {
     const conn = await mongoose.connect(MONGODB_URI, {
-      maxPoolSize: 10,
+      maxPoolSize: 50, // Optimized for production
+      minPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+      family: 4, // Use IPv4
+      retryWrites: true,
+      retryReads: true,
     });
 
     console.log(`✓ MongoDB Connected: ${conn.connection.host}`);
+    console.log(`  Database: ${conn.connection.name}`);
+    console.log(`  Pool Size: ${conn.connections[0]._readyState === 1 ? 'Active' : 'Inactive'}`);
     return conn;
   } catch (error) {
     console.error('✗ MongoDB Connection Error:', error.message);
+    console.error('  Please check:');
+    console.error('  1. MONGODB_URI is set in .env');
+    console.error('  2. IP address is whitelisted in MongoDB Atlas');
+    console.error('  3. Username and password are correct');
     process.exit(1);
   }
 };

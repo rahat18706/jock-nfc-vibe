@@ -3,8 +3,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 
-  'mongodb+srv://jock-nfc:UClDoI6XVAv2Gj1R@cluster0.73lq38l.mongodb.net/tapreview?retryWrites=true&w=majority&appName=Cluster0';
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  console.error('❌ MONGODB_URI environment variable is not set');
+  console.error('Please set MONGODB_URI in your .env file');
+  process.exit(1);
+}
 
 async function testDatabase() {
   console.log('🔍 Testing MongoDB Connection...\n');
