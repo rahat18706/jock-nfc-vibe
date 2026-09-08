@@ -4,9 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Users, CreditCard, BarChart3, Settings, LogOut,
   Wifi, Search, Plus, Check, X, Shield, Building2, Eye, Trash2,
-  Ban, CheckCircle, Menu, ArrowRight, Copy
+  Ban, CheckCircle, Menu, ArrowRight, Copy, QrCode
 } from 'lucide-react';
 import { adminStats, allBusinesses } from '../data/mockData';
+import QRCardGenerator from '../components/QRCardGenerator';
 
 export default function AdminPage() {
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ export default function AdminPage() {
     { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
     { id: 'businesses', icon: Building2, label: 'Businesses' },
     { id: 'cards', icon: Wifi, label: 'NFC Cards' },
+    { id: 'qr-cards', icon: QrCode, label: 'QR Cards' },
     { id: 'orders', icon: CreditCard, label: 'Orders' },
     { id: 'users', icon: Users, label: 'Users' },
     { id: 'analytics', icon: BarChart3, label: 'Analytics' },
@@ -155,6 +157,7 @@ export default function AdminPage() {
                 {activeSection === 'overview' && 'Platform overview and key metrics.'}
                 {activeSection === 'businesses' && 'Manage all business accounts.'}
                 {activeSection === 'cards' && 'View and manage all NFC cards.'}
+                {activeSection === 'qr-cards' && 'Generate custom QR cards for your businesses.'}
                 {activeSection === 'orders' && 'Track all orders and payments.'}
                 {activeSection === 'users' && 'Manage user accounts.'}
                 {activeSection === 'analytics' && 'Platform-wide analytics.'}
@@ -309,8 +312,20 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* QR Cards Section */}
+          {activeSection === 'qr-cards' && (
+            <QRCardGenerator 
+              businesses={allBusinesses.map(b => ({
+                id: b.id,
+                name: b.name,
+                slug: b.slug,
+                destinationUrl: b.destinationUrl
+              }))}
+            />
+          )}
+
           {/* Other sections placeholder */}
-          {!['overview', 'businesses'].includes(activeSection) && (
+          {!['overview', 'businesses', 'qr-cards'].includes(activeSection) && (
             <div className="premium-card p-12 text-center">
               <div className="w-12 h-12 rounded-xl bg-stone-100 flex items-center justify-center mx-auto mb-4">
                 {activeSection === 'cards' && <Wifi className="w-5 h-5 text-stone-400" />}
