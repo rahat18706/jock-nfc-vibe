@@ -5,7 +5,7 @@ import {
   LayoutDashboard, BarChart3, Store, CreditCard, ShoppingBag,
   Settings, LogOut, Wifi, TrendingUp, ArrowUpRight, ArrowDownRight,
   Globe, Smartphone, Monitor, Tablet, Edit3, Check, ExternalLink,
-  Clock, MapPin, Activity, Users, Zap
+  Clock, MapPin, Activity, Users, Zap, AlertTriangle
 } from 'lucide-react';
 import { mockBusiness, mockCards, mockScans, mockOrders } from '../data/mockData';
 
@@ -350,15 +350,31 @@ function StoreSection() {
   const [editing, setEditing] = useState(false);
   const [url, setUrl] = useState(mockBusiness.destinationUrl);
   const [saved, setSaved] = useState(false);
+  const [urlError, setUrlError] = useState('');
 
   const handleSave = () => {
+    // Validate URL (same validation as backend)
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        setUrlError('Only HTTP and HTTPS URLs are allowed');
+        return;
+      }
+    } catch {
+      setUrlError('Please enter a valid URL');
+      return;
+    }
+    
+    setUrlError('');
     setEditing(false);
     setSaved(true);
+    // In production: PUT /api/businesses/cards/:cardId/destination
     setTimeout(() => setSaved(false), 3000);
   };
 
   return (
     <div className="space-y-6">
+      {/* Business Info */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
         <div className="flex items-center gap-4 mb-6">
           <div className="w-14 h-14 rounded-xl bg-brand-50 flex items-center justify-center text-2xl">
@@ -385,57 +401,94 @@ function StoreSection() {
         </div>
       </div>
 
-      {/* Destination URL - Key Feature */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-4">
+      {/* ★ CORE FEATURE: Change NFC Destination URL */}
+      <div className="bg-white rounded-xl border-2 border-brand-200 p-6 shadow-sm shadow-brand-50">
+        <div className="flex items-center justify-between mb-2">
           <div>
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-brand-600" />
-              Destination URL
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <Zap className="w-5 h-5 text-brand-600" />
+              Change NFC Card Destination
             </h3>
-            <p className="text-sm text-gray-500 mt-1">All NFC cards redirect here. Change anytime.</p>
+            <p className="text-sm text-gray-500 mt-1">
+              Update where your NFC cards redirect. Takes effect instantly — no card replacement needed.
+            </p>
           </div>
           {saved && (
-            <span className="flex items-center gap-1 text-sm text-green-600 font-medium">
-              <Check className="w-4 h-4" /> Saved!
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-700 text-sm font-medium">
+              <Check className="w-4 h-4" /> Updated!
             </span>
           )}
         </div>
 
-        {editing ? (
-          <div className="space-y-3">
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none text-sm"
-              placeholder="https://g.page/r/your-business"
-            />
-            <div className="flex gap-2">
-              <button onClick={handleSave} className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors">
-                Save Changes
-              </button>
-              <button onClick={() => setEditing(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
-                Cancel
-              </button>
+        {/* Current URL Display */}
+        {!editing && (
+          <div className="mt-4 space-y-4">
+            <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+              <div className="text-xs text-gray-500 mb-1.5 font-medium uppercase tracking-wide">Current Destination</div>
+              <div className="flex items-center gap-3">
+                <Globe className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="text-sm text-gray-900 font-mono truncate">{url}</span>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <div className="flex-1 flex items-center gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
-              <Globe className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <span className="text-sm text-gray-700 truncate">{url}</span>
+
+            <div className="p-4 rounded-xl bg-gray-900 text-white">
+              <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Your NFC URL (never changes)</div>
+              <div className="flex items-center gap-3">
+                <Wifi className="w-4 h-4 text-brand-400 flex-shrink-0" />
+                <span className="text-sm font-mono text-brand-300">tapreview.com/s/{mockBusiness.slug}</span>
+              </div>
             </div>
-            <button onClick={() => setEditing(true)} className="flex items-center gap-2 px-4 py-3 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors whitespace-nowrap">
-              <Edit3 className="w-3.5 h-3.5" />
-              Edit URL
+
+            <button 
+              onClick={() => setEditing(true)} 
+              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 transition-all shadow-lg shadow-brand-200"
+            >
+              <Edit3 className="w-4 h-4" />
+              Change Destination URL
             </button>
           </div>
         )}
 
-        <div className="mt-4 p-3 rounded-lg bg-brand-50 border border-brand-100">
-          <p className="text-xs text-brand-700">
-            💡 <strong>Tip:</strong> Your NFC cards use the URL <code className="bg-brand-100 px-1 py-0.5 rounded">tapreview.com/s/{mockBusiness.slug}</code> — this never changes. Only the destination above changes when you edit it.
+        {/* Edit Mode */}
+        {editing && (
+          <div className="mt-4 space-y-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-2">New Destination URL</label>
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => { setUrl(e.target.value); setUrlError(''); }}
+                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none text-sm font-mono"
+                placeholder="https://g.page/r/your-business-review"
+              />
+              {urlError && (
+                <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  {urlError}
+                </p>
+              )}
+              <p className="mt-2 text-xs text-gray-400">
+                Only HTTP and HTTPS URLs are accepted. Your NFC cards will immediately redirect to this new URL.
+              </p>
+            </div>
+            
+            <div className="flex gap-2">
+              <button onClick={handleSave} className="flex-1 px-4 py-3 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 transition-colors">
+                Save & Apply Instantly
+              </button>
+              <button onClick={() => { setEditing(false); setUrlError(''); }} className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* How it works */}
+        <div className="mt-6 p-4 rounded-xl bg-brand-50 border border-brand-100">
+          <p className="text-xs text-brand-700 leading-relaxed">
+            <strong>How it works:</strong> Your physical NFC cards are encoded with <code className="bg-brand-100 px-1 py-0.5 rounded">tapreview.com/s/{mockBusiness.slug}</code>. 
+            This URL never changes. When someone taps the card, our server looks up the current destination and redirects instantly. 
+            Change the destination above anytime — the physical card keeps working.
           </p>
         </div>
       </div>

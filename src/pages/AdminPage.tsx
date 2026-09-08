@@ -201,10 +201,21 @@ function AdminOverview() {
 
 function AdminBusinesses() {
   const [search, setSearch] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [newBiz, setNewBiz] = useState({ username: '', password: '', email: '', fullName: '', businessName: '', category: 'restaurant' });
+  const [created, setCreated] = useState<{username: string, password: string} | null>(null);
+
   const filtered = allBusinesses.filter(b => 
     b.name.toLowerCase().includes(search.toLowerCase()) ||
     b.slug.toLowerCase().includes(search.toLowerCase())
   );
+
+  const handleCreate = () => {
+    // In production: POST /api/admin/businesses
+    // This creates user account with admin-set credentials + business
+    setCreated({ username: newBiz.username, password: newBiz.password });
+    setNewBiz({ username: '', password: '', email: '', fullName: '', businessName: '', category: 'restaurant' });
+  };
 
   return (
     <div className="space-y-6">
@@ -219,10 +230,152 @@ function AdminBusinesses() {
             className="pl-9 pr-4 py-2 w-full rounded-lg border border-gray-200 text-sm focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none"
           />
         </div>
-        <button className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">
+        <button 
+          onClick={() => setShowCreate(true)}
+          className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
+        >
           + Add Business
         </button>
       </div>
+
+      {/* Create Business Modal - Admin sets credentials */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            {!created ? (
+              <>
+                <h2 className="text-xl font-bold text-gray-900 mb-1">Create Business Account</h2>
+                <p className="text-sm text-gray-500 mb-6">Set the login credentials for this business owner. They will use these to access their dashboard.</p>
+                
+                <div className="space-y-4">
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <p className="text-xs text-amber-700">
+                      <strong>Important:</strong> You are setting the username and password for this business. Share these credentials securely with the business owner.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Username *</label>
+                      <input
+                        type="text"
+                        value={newBiz.username}
+                        onChange={(e) => setNewBiz({...newBiz, username: e.target.value})}
+                        placeholder="abc-restaurant"
+                        className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Password *</label>
+                      <input
+                        type="text"
+                        value={newBiz.password}
+                        onChange={(e) => setNewBiz({...newBiz, password: e.target.value})}
+                        placeholder="Set initial password"
+                        className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Email *</label>
+                    <input
+                      type="email"
+                      value={newBiz.email}
+                      onChange={(e) => setNewBiz({...newBiz, email: e.target.value})}
+                      placeholder="owner@business.com"
+                      className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Owner Full Name *</label>
+                    <input
+                      type="text"
+                      value={newBiz.fullName}
+                      onChange={(e) => setNewBiz({...newBiz, fullName: e.target.value})}
+                      placeholder="John Smith"
+                      className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Business Name *</label>
+                      <input
+                        type="text"
+                        value={newBiz.businessName}
+                        onChange={(e) => setNewBiz({...newBiz, businessName: e.target.value})}
+                        placeholder="ABC Restaurant"
+                        className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Category *</label>
+                      <select
+                        value={newBiz.category}
+                        onChange={(e) => setNewBiz({...newBiz, category: e.target.value})}
+                        className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none"
+                      >
+                        <option value="restaurant">Restaurant</option>
+                        <option value="cafe">Cafe</option>
+                        <option value="salon">Salon</option>
+                        <option value="hotel">Hotel</option>
+                        <option value="shop">Shop</option>
+                        <option value="clinic">Clinic</option>
+                        <option value="gym">Gym</option>
+                        <option value="barber">Barber</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button 
+                      onClick={handleCreate}
+                      className="flex-1 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
+                    >
+                      Create Account
+                    </button>
+                    <button 
+                      onClick={() => setShowCreate(false)}
+                      className="px-4 py-2.5 text-gray-500 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-center mb-6">
+                  <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="w-6 h-6 text-green-600" />
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900">Account Created!</h2>
+                  <p className="text-sm text-gray-500 mt-1">Share these credentials with the business owner:</p>
+                </div>
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">Username:</span>
+                    <code className="text-sm font-mono font-bold text-gray-900">{created.username}</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">Password:</span>
+                    <code className="text-sm font-mono font-bold text-gray-900">{created.password}</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">Login URL:</span>
+                    <code className="text-sm font-mono text-brand-600">tapreview.com/login</code>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => { setShowCreate(false); setCreated(null); }}
+                  className="w-full mt-4 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
+                >
+                  Done
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">

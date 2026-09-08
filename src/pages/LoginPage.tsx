@@ -1,20 +1,29 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Wifi, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Wifi, User, Lock, ArrowRight, Eye, EyeOff, Shield, Info } from 'lucide-react';
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate auth - in production this calls the API
-    if (email.includes('admin')) {
+    setError('');
+
+    // Simulate authentication
+    // In production, this calls POST /api/auth/login on Express backend
+    if (!username || !password) {
+      setError('Please enter username and password');
+      return;
+    }
+
+    // Demo routing
+    if (username === 'admin' || username.includes('admin')) {
       navigate('/admin');
     } else {
       navigate('/dashboard');
@@ -35,35 +44,30 @@ export default function LoginPage() {
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              {isLogin ? 'Welcome back' : 'Create your account'}
+              {isLogin ? 'Welcome back' : 'Account Created'}
             </h1>
-            <p className="text-gray-500 mb-8">
-              {isLogin ? 'Log in to manage your NFC cards and analytics' : 'Get started with TapReview in seconds'}
+            <p className="text-gray-500 mb-6">
+              {isLogin 
+                ? 'Log in with the credentials provided by your administrator.' 
+                : 'Your account has been created by the admin. Use the credentials below to log in.'}
             </p>
 
+            {error && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                {error}
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
-              {!isLogin && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Full Name</label>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Username</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="John Smith"
-                    className="w-full px-4 py-3 rounded-lg border border-gray-200 text-sm focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@business.com"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="your-username"
                     className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 text-sm focus:border-brand-300 focus:ring-2 focus:ring-brand-100 outline-none"
                   />
                 </div>
@@ -90,54 +94,49 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {isLogin && (
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-                    <span className="text-sm text-gray-600">Remember me</span>
-                  </label>
-                  <button type="button" className="text-sm text-brand-600 hover:text-brand-700 font-medium">
-                    Forgot password?
-                  </button>
-                </div>
-              )}
-
               <button
                 type="submit"
                 className="w-full flex items-center justify-center gap-2 py-3.5 bg-gray-900 text-white rounded-lg font-semibold hover:bg-gray-800 transition-all"
               >
-                {isLogin ? 'Log In' : 'Create Account'}
+                {isLogin ? 'Log In' : 'Log In'}
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
 
-            <div className="mt-6 text-center">
-              <span className="text-sm text-gray-500">
-                {isLogin ? "Don't have an account? " : "Already have an account? "}
-              </span>
-              <button
-                onClick={() => setIsLogin(!isLogin)}
-                className="text-sm text-brand-600 hover:text-brand-700 font-medium"
-              >
-                {isLogin ? 'Sign up' : 'Log in'}
-              </button>
+            {/* Info Box */}
+            <div className="mt-6 p-4 rounded-xl bg-brand-50 border border-brand-100">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-brand-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-brand-800 mb-1">Credentials set by admin</p>
+                  <p className="text-xs text-brand-600">
+                    Your username and password were created by your account administrator. 
+                    Contact them if you need a password reset or have login issues.
+                  </p>
+                </div>
+              </div>
             </div>
 
-            {/* Demo links */}
-            <div className="mt-8 p-4 rounded-xl bg-brand-50 border border-brand-100">
-              <div className="text-xs font-medium text-brand-700 mb-2">Demo Access</div>
-              <div className="space-y-1.5">
+            {/* Demo Access */}
+            <div className="mt-6 p-4 rounded-xl bg-gray-100 border border-gray-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="w-4 h-4 text-gray-600" />
+                <span className="text-xs font-semibold text-gray-700 uppercase">Demo Access</span>
+              </div>
+              <div className="space-y-2">
                 <button
-                  onClick={() => { setEmail('owner@abcrestaurant.com'); setPassword('demo123'); }}
-                  className="block w-full text-left text-xs text-brand-600 hover:text-brand-700"
+                  onClick={() => { setUsername('abc-restaurant'); setPassword('demo123'); }}
+                  className="block w-full text-left p-2 rounded-lg bg-white border border-gray-200 hover:border-brand-300 transition-colors"
                 >
-                  → Business Dashboard: owner@abcrestaurant.com
+                  <div className="text-xs font-medium text-gray-900">Business Owner</div>
+                  <div className="text-xs text-gray-500">Username: abc-restaurant</div>
                 </button>
                 <button
-                  onClick={() => { setEmail('admin@tapreview.com'); setPassword('admin123'); }}
-                  className="block w-full text-left text-xs text-brand-600 hover:text-brand-700"
+                  onClick={() => { setUsername('admin'); setPassword('admin123'); }}
+                  className="block w-full text-left p-2 rounded-lg bg-white border border-gray-200 hover:border-brand-300 transition-colors"
                 >
-                  → Admin Panel: admin@tapreview.com
+                  <div className="text-xs font-medium text-gray-900">Administrator</div>
+                  <div className="text-xs text-gray-500">Username: admin</div>
                 </button>
               </div>
             </div>
@@ -147,7 +146,6 @@ export default function LoginPage() {
 
       {/* Right - Visual */}
       <div className="hidden lg:flex flex-1 bg-gradient-to-br from-brand-600 via-brand-700 to-brand-800 items-center justify-center p-12 relative overflow-hidden">
-        {/* Background pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-64 h-64 rounded-full border border-white/30" />
           <div className="absolute bottom-20 right-20 w-96 h-96 rounded-full border border-white/20" />
@@ -158,9 +156,9 @@ export default function LoginPage() {
           <div className="w-20 h-20 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center mx-auto mb-8 border border-white/20">
             <Wifi className="w-10 h-10 text-white" />
           </div>
-          <h2 className="text-3xl font-bold mb-4">Manage everything from one place</h2>
+          <h2 className="text-3xl font-bold mb-4">Manage your NFC cards</h2>
           <p className="text-white/70 text-lg leading-relaxed">
-            Track scans, change destinations, view analytics, and manage your NFC cards — all from your dashboard.
+            Change destination URLs, view analytics, and track scans — all from your dashboard. No card replacement needed.
           </p>
 
           <div className="mt-10 grid grid-cols-3 gap-4">
