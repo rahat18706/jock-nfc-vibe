@@ -13,10 +13,10 @@ export const schemas = {
     password: Joi.string().min(6).required(),
     email: Joi.string().email().required().trim().lowercase(),
     fullName: Joi.string().min(2).max(100).required().trim(),
-    businessName: Joi.string().min(2).max(100).required().trim(),
+    businessName: Joi.string().min(2).max(100).optional().trim(),
     category: Joi.string()
       .valid('restaurant', 'cafe', 'salon', 'hotel', 'shop', 'clinic', 'gym', 'barber', 'other')
-      .required(),
+      .optional(),
   }),
 
   // Business
@@ -55,8 +55,14 @@ export const schemas = {
     items: Joi.array()
       .items(
         Joi.object({
-          productId: Joi.string().required(),
+          product: Joi.string().required(),
           quantity: Joi.number().integer().min(1).required(),
+          customization: Joi.object({
+            businessName: Joi.string().max(100).trim(),
+            logo: Joi.string().max(500),
+            color: Joi.string().max(20),
+            cardLabel: Joi.string().max(50).trim(),
+          }),
         })
       )
       .min(1)
@@ -92,6 +98,37 @@ export const schemas = {
     plan: Joi.string().valid('free', 'starter', 'professional', 'enterprise'),
   }),
 
+  createCard: Joi.object({
+    cardId: Joi.string().min(1).max(100).required().trim(),
+    businessId: Joi.string().required(),
+    destinationUrl: Joi.string().uri({ scheme: ['http', 'https'] }).required(),
+    label: Joi.string().max(50).trim().allow(''),
+  }),
+
+  updateAdminCard: Joi.object({
+    isActive: Joi.boolean(),
+    destinationUrl: Joi.string().uri({ scheme: ['http', 'https'] }),
+    label: Joi.string().max(50).trim().allow(''),
+  }).min(1),
+
+  updateCardDesign: Joi.object({
+    title: Joi.string().max(24).required().trim(),
+    subtitle: Joi.string().max(30).required().trim(),
+    colors: Joi.object({
+      c1: Joi.string().pattern(/^#[0-9a-f]{6}$/i).required(),
+      c2: Joi.string().pattern(/^#[0-9a-f]{6}$/i).required(),
+      c3: Joi.string().pattern(/^#[0-9a-f]{6}$/i).required(),
+      c4: Joi.string().pattern(/^#[0-9a-f]{6}$/i).required(),
+    }).required(),
+  }),
+
+  updateOrderStatus: Joi.object({
+    status: Joi.string().valid('pending', 'processing', 'shipped', 'delivered', 'cancelled').required(),
+    trackingNumber: Joi.string().max(200).allow(''),
+    trackingUrl: Joi.string().uri({ scheme: ['http', 'https'] }).allow(''),
+    adminNotes: Joi.string().max(1000).allow(''),
+  }),
+
   // Password reset
   forgotPassword: Joi.object({
     username: Joi.string().required().trim(),
@@ -106,6 +143,16 @@ export const schemas = {
     currentPassword: Joi.string().required(),
     newPassword: Joi.string().min(6).required(),
   }),
+
+  payment: Joi.object({
+    method: Joi.string().valid('stripe', 'paypal', 'cod', 'bank_transfer').required(),
+    transactionId: Joi.string().max(200).trim(),
+  }),
+
+  updateUser: Joi.object({
+    isActive: Joi.boolean(),
+    role: Joi.string().valid('admin', 'business'),
+  }).min(1),
 };
 
 // Validation middleware factory

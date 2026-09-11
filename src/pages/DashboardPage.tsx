@@ -3,9 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Wifi, Edit3, Check, X, Menu, LogOut,
-  TrendingUp, Clock, AlertCircle, Copy, ExternalLink
+  TrendingUp, Clock, AlertCircle, Copy, ExternalLink, Package
 } from 'lucide-react';
-import { businessApi, analyticsApi, ApiError } from '../lib/api';
+import { businessApi, analyticsApi, orderApi, ApiError } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input, Card, Badge, StatusDot, NFCCard, LoadingState, ErrorState, EmptyState, Modal } from '../components/ui';
 
@@ -36,6 +36,22 @@ interface Stats {
   uniqueVisitors: number;
 }
 
+interface ProductType {
+  _id: string;
+  name: string;
+  price: number;
+  description?: string;
+}
+
+interface OrderType {
+  _id: string;
+  orderNumber: string;
+  status: string;
+  total: number;
+  trackingNumber?: string;
+  createdAt: string;
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -50,6 +66,18 @@ export default function DashboardPage() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [cards, setCards] = useState<CardType[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [orders, setOrders] = useState<OrderType[]>([]);
+  const [products, setProducts] = useState<ProductType[]>([]);
+  const [requestData, setRequestData] = useState({
+    productId: '',
+    quantity: 1,
+    fullName: user?.fullName || '',
+    street: '',
+    city: '',
+    state: '',
+    zipCode: '',
+  });
+  const [requesting, setRequesting] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -61,10 +89,12 @@ export default function DashboardPage() {
       setLoading(true);
       setError('');
       
-      const [businessRes, cardsRes, statsRes] = await Promise.all([
+      const [businessRes, cardsRes, statsRes, ordersRes, productsRes] = await Promise.all([
         businessApi.getMyBusiness(),
         businessApi.getMyCards(),
         analyticsApi.getOverview(),
+        orderApi.getMyOrders(),
+        orderApi.getProducts(),
       ]);
 
       if (businessRes.success && businessRes.data) {
@@ -78,6 +108,17 @@ export default function DashboardPage() {
       if (statsRes.success && statsRes.data) {
         setStats(statsRes.data);
       }
+
+      if (ordersRes.success && ordersRes.data) {
+        setOrders(ordersRes.data.orders);
+      }
+
+      if (productsRes.success && productsRes.data) {
+        setProducts(productsRes.data.products);
+        if (!requestData.productId && productsRes.data.products[0]) {
+          setRequestData((current) => ({ ...current, productId: productsRes.data.products[0]._id }));
+        }
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -86,6 +127,36 @@ export default function DashboardPage() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCardRequest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setRequesting(true);
+    setError('');
+    try {
+      await orderApi.createOrder({
+        items: [{
+          product: requestData.productId,
+          quantity: requestData.quantity,
+          customization: { businessName: business?.name },
+        }],
+        shippingAddress: {
+          fullName: requestData.fullName,
+          street: requestData.street,
+          city: requestData.city,
+          state: requestData.state,
+          zipCode: requestData.zipCode,
+          country: 'US',
+        },
+      });
+      setSuccess('Card request sent to admin for approval');
+      setActiveTab('requests');
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to submit card request');
+    } finally {
+      setRequesting(false);
     }
   };
 
@@ -162,6 +233,7 @@ export default function DashboardPage() {
           {[
             { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
             { id: 'cards', icon: Wifi, label: 'My Cards' },
+            { id: 'requests', icon: Package, label: 'Card Requests' },
           ].map((item) => (
             <button
               key={item.id}
@@ -231,6 +303,7 @@ export default function DashboardPage() {
                 {[
                   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
                   { id: 'cards', icon: Wifi, label: 'My Cards' },
+                  { id: 'requests', icon: Package, label: 'Card Requests' },
                 ].map((item) => (
                   <button
                     key={item.id}
@@ -326,19 +399,34 @@ export default function DashboardPage() {
               {/* Quick Actions */}
               <Card className="p-6">
                 <h2 className="text-lg font-semibold text-foreground mb-4">Your Cards</h2>
-                <button
-                  onClick={() => setActiveTab('cards')}
-                  className="w-full flex items-center justify-between p-4 rounded-xl border border-border hover:border-accent/30 hover:bg-card-hover transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <Wifi className="w-5 h-5 text-accent" />
-                    <div className="text-left">
-                      <p className="font-medium text-foreground">Manage NFC Cards</p>
-                      <p className="text-sm text-muted">View and update card destinations</p>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setActiveTab('cards')}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-border hover:border-accent/30 hover:bg-card-hover transition-all group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Wifi className="w-5 h-5 text-accent" />
+                      <div className="text-left">
+                        <p className="font-medium text-foreground">Manage NFC Cards</p>
+                        <p className="text-sm text-muted">View and update card destinations</p>
+                      </div>
                     </div>
-                  </div>
-                  <span className="text-muted group-hover:text-accent transition-colors">→</span>
-                </button>
+                    <span className="text-muted group-hover:text-accent transition-colors">→</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('requests')}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-accent/30 bg-accent/5 hover:bg-accent/10 transition-all group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Package className="w-5 h-5 text-accent" />
+                      <div className="text-left">
+                        <p className="font-medium text-foreground">Request NFC Cards</p>
+                        <p className="text-sm text-muted">Order cards and track admin approval</p>
+                      </div>
+                    </div>
+                    <span className="text-muted group-hover:text-accent transition-colors">→</span>
+                  </button>
+                </div>
               </Card>
             </div>
           )}
@@ -373,13 +461,91 @@ export default function DashboardPage() {
                       totalScans={card.stats?.totalScans}
                       todayScans={card.stats?.todayScans}
                       onEdit={() => {
-                        setEditingCard(card._id);
+                        setEditingCard(card.cardId);
                         setNewUrl(card.destinationUrl);
                       }}
                     />
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'requests' && (
+            <div className="animate-fade-in space-y-6">
+              <div>
+                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground mb-2">
+                  Card Requests
+                </h1>
+                <p className="text-muted">Request NFC cards and follow approval and shipping progress.</p>
+              </div>
+
+              <Card className="p-6">
+                <h2 className="text-lg font-semibold text-foreground mb-4">Request new cards</h2>
+                {products.length === 0 ? (
+                  <p className="text-sm text-muted">No card packages are available yet.</p>
+                ) : (
+                  <form onSubmit={handleCardRequest} className="space-y-4">
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-2">Package</label>
+                        <select
+                          value={requestData.productId}
+                          onChange={(e) => setRequestData({ ...requestData, productId: e.target.value })}
+                          className="input-premium"
+                          required
+                        >
+                          {products.map((product) => (
+                            <option key={product._id} value={product._id}>
+                              {product.name} - ${product.price}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <Input
+                        label="Quantity"
+                        type="number"
+                        min={1}
+                        value={requestData.quantity}
+                        onChange={(e) => setRequestData({ ...requestData, quantity: Number(e.target.value) })}
+                        required
+                      />
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <Input label="Full Name" value={requestData.fullName} onChange={(e) => setRequestData({ ...requestData, fullName: e.target.value })} required />
+                      <Input label="Street Address" value={requestData.street} onChange={(e) => setRequestData({ ...requestData, street: e.target.value })} required />
+                      <Input label="City" value={requestData.city} onChange={(e) => setRequestData({ ...requestData, city: e.target.value })} required />
+                      <Input label="State" value={requestData.state} onChange={(e) => setRequestData({ ...requestData, state: e.target.value })} required />
+                      <Input label="ZIP Code" value={requestData.zipCode} onChange={(e) => setRequestData({ ...requestData, zipCode: e.target.value })} required />
+                    </div>
+                    <Button type="submit" variant="primary" loading={requesting} icon={<Package className="w-4 h-4" />}>
+                      Send Request to Admin
+                    </Button>
+                  </form>
+                )}
+              </Card>
+
+              <div>
+                <h2 className="text-lg font-semibold text-foreground mb-3">Request history</h2>
+                {orders.length === 0 ? (
+                  <EmptyState icon={<Package className="w-6 h-6 text-muted" />} title="No requests yet" description="Your card requests and shipping updates will appear here." />
+                ) : (
+                  <div className="space-y-3">
+                    {orders.map((order) => (
+                      <Card key={order._id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-foreground">{order.orderNumber}</p>
+                          <p className="text-sm text-muted">${order.total.toFixed(2)} - {new Date(order.createdAt).toLocaleDateString()}</p>
+                          {order.trackingNumber && <p className="text-xs text-muted mt-1">Tracking: {order.trackingNumber}</p>}
+                        </div>
+                        <Badge variant={order.status === 'cancelled' ? 'error' : order.status === 'delivered' ? 'success' : 'default'}>
+                          {order.status === 'processing' ? 'Approved' : order.status}
+                        </Badge>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

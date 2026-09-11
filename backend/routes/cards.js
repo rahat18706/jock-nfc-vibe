@@ -2,6 +2,7 @@ import express from 'express';
 import NfcCard from '../models/NfcCard.js';
 import Business from '../models/Business.js';
 import { protect, businessOnly } from '../middleware/auth.js';
+import { success, failure } from '../utils/response.js';
 
 const router = express.Router();
 
@@ -9,12 +10,12 @@ const router = express.Router();
 router.get('/', protect, businessOnly, async (req, res) => {
   try {
     const business = await Business.findOne({ owner: req.user._id });
-    if (!business) return res.status(404).json({ error: 'Business not found' });
+    if (!business) return failure(res, 'Business not found', 404);
 
     const cards = await NfcCard.find({ business: business._id }).sort({ createdAt: -1 });
-    res.json({ cards });
+    return success(res, { cards });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -22,12 +23,14 @@ router.get('/', protect, businessOnly, async (req, res) => {
 router.get('/:cardId', protect, businessOnly, async (req, res) => {
   try {
     const business = await Business.findOne({ owner: req.user._id });
+    if (!business) return failure(res, 'Business not found', 404);
+
     const card = await NfcCard.findOne({ cardId: req.params.cardId, business: business._id });
-    
-    if (!card) return res.status(404).json({ error: 'Card not found' });
-    res.json({ card });
+
+    if (!card) return failure(res, 'Card not found', 404);
+    return success(res, { card });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 

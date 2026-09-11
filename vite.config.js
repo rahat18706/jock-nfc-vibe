@@ -11,5 +11,19 @@ export default defineConfig({
     hmr: {
       port: 3000,
     },
+    proxy: {
+      // Forward NFC/QR redirect hits straight to the backend instead of
+      // letting React Router's client-side fallback page swallow them.
+      "/s": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+      // Optional: lets you call the API from the frontend origin too,
+      // matching how it'll behave in production behind a shared domain/proxy.
+      "/api": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+    },
   },
 });

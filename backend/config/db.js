@@ -6,14 +6,12 @@ dotenv.config();
 // Security: Never hardcode credentials - use environment variables only
 const MONGODB_URI = process.env.MONGODB_URI;
 
-if (!MONGODB_URI) {
-  console.error('❌ CRITICAL: MONGODB_URI environment variable is not set');
-  console.error('   Please set MONGODB_URI in your .env file');
-  process.exit(1);
-}
-
 export const connectDB = async () => {
   try {
+    if (!MONGODB_URI) {
+      throw new Error('MONGODB_URI environment variable is not set');
+    }
+
     const conn = await mongoose.connect(MONGODB_URI, {
       maxPoolSize: 50, // Optimized for production
       minPoolSize: 10,

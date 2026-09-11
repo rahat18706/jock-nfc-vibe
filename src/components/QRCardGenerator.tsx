@@ -1,23 +1,35 @@
 import { useState, useRef, useEffect } from 'react';
 import QRCode from 'qrcode';
-import { Download, QrCode, Palette, Type, Link2, Sparkles } from 'lucide-react';
+import { Download, QrCode, Palette, Type, Link2, Sparkles, Printer, Save } from 'lucide-react';
 
 interface Business {
   id: string;
+  cardId: string;
   name: string;
   slug: string;
-  destinationUrl: string;
+  design?: {
+    title?: string;
+    subtitle?: string;
+    colors?: { c1: string; c2: string; c3: string; c4: string };
+  };
 }
 
 interface Props {
   businesses: Business[];
+  onSaveDesign?: (businessId: string, design: {
+    title: string;
+    subtitle: string;
+    colors: { c1: string; c2: string; c3: string; c4: string };
+  }) => Promise<void>;
 }
 
-export default function QRCardGenerator({ businesses }: Props) {
+export default function QRCardGenerator({ businesses, onSaveDesign }: Props) {
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(businesses[0] || null);
-  const [url, setUrl] = useState(businesses[0]?.destinationUrl || 'https://g.page/r/your-business/review');
-  const [title, setTitle] = useState('TAP OR SCAN');
-  const [subtitle, setSubtitle] = useState('review us on Google');
+  const publicBaseUrl = import.meta.env.VITE_PUBLIC_REDIRECT_URL
+    || import.meta.env.VITE_API_URL?.replace(/\/api\/?$/, '')
+    || (typeof window === 'undefined' ? 'https://tapreview.com' : window.location.origin);
+  const [title, setTitle] = useState(businesses[0]?.design?.title || 'TAP OR SCAN');
+  const [subtitle, setSubtitle] = useState(businesses[0]?.design?.subtitle || 'review us on Google');
   const [colors, setColors] = useState({
     c1: '#34A853', // TL - Google Green
     c2: '#FBBC05', // TR - Google Yellow
@@ -25,6 +37,7 @@ export default function QRCardGenerator({ businesses }: Props) {
     c4: '#EA4335', // BR - Google Red
   });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const qrImageRef = useRef<HTMLImageElement | null>(null);
@@ -32,9 +45,15 @@ export default function QRCardGenerator({ businesses }: Props) {
   // Update URL when business changes
   useEffect(() => {
     if (selectedBusiness) {
-      setUrl(selectedBusiness.destinationUrl);
+      setTitle(selectedBusiness.design?.title || 'TAP OR SCAN');
+      setSubtitle(selectedBusiness.design?.subtitle || 'review us on Google');
+      setColors(selectedBusiness.design?.colors || {
+        c1: '#34A853', c2: '#FBBC05', c3: '#4285F4', c4: '#EA4335',
+      });
     }
   }, [selectedBusiness]);
+
+  const url = `${publicBaseUrl}/s/${selectedBusiness?.cardId || 'card-id'}`;
 
   // Generate QR code
   useEffect(() => {
@@ -404,7 +423,7 @@ export default function QRCardGenerator({ businesses }: Props) {
             <select
               value={selectedBusiness?.id || ''}
               onChange={(e) => {
-                const biz = businesses.find(b => b.id === e.target.value);
+                  const biz = businesses.find(b => b.id === e.target.value);
                 setSelectedBusiness(biz || null);
               }}
               className="w-full px-4 py-3 rounded-xl border-2 border-stone-200 text-sm font-medium focus:border-coral focus:outline-none transition-colors"
@@ -415,17 +434,16 @@ export default function QRCardGenerator({ businesses }: Props) {
             </select>
           </div>
 
-          {/* URL */}
+          {/* Locked redirect URL */}
           <div>
             <label className="flex items-center gap-2 text-xs font-bold text-stone-600 uppercase tracking-wider mb-2">
               <Link2 className="w-3.5 h-3.5" />
-              Destination URL
+              Locked card URL
             </label>
             <input
               type="url"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://g.page/r/your-business/review"
+              readOnly
               className="w-full px-4 py-3 rounded-xl border-2 border-stone-200 text-sm focus:border-coral focus:outline-none transition-colors"
             />
           </div>
@@ -513,6 +531,29 @@ export default function QRCardGenerator({ businesses }: Props) {
             {isGenerating ? 'Generating...' : 'Download PNG'}
           </button>
 
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={async () => {
+                if (!selectedBusiness || !onSaveDesign) return;
+                setIsSaving(true);
+                await onSaveDesign(selectedBusiness.id, { title, subtitle, colors });
+                setIsSaving(false);
+              }}
+              disabled={isSaving || !onSaveDesign}
+              className="flex items-center justify-center gap-2 px-4 py-3 border border-stone-200 text-ink rounded-xl font-bold disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              {isSaving ? 'Saving...' : 'Save Design'}
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center justify-center gap-2 px-4 py-3 border border-stone-200 text-ink rounded-xl font-bold"
+            >
+              <Printer className="w-4 h-4" />
+              Print
+            </button>
+          </div>
+
           <p className="text-xs text-stone-400 leading-relaxed">
             Transparent background. Change the URL anytime and re-download. Perfect for printing on cards, posters, or menus.
           </p>
@@ -540,7 +581,7 @@ export default function QRCardGenerator({ businesses }: Props) {
                 ref={canvasRef}
                 width={1200}
                 height={1900}
-                className="w-[300px] h-auto"
+                className="w-75 h-auto"
                 style={{ display: 'block' }}
               />
             </div>
@@ -556,14 +597,13 @@ export default function QRCardGenerator({ businesses }: Props) {
       {/* Info */}
       <div className="bg-coral/5 border-2 border-coral/20 rounded-2xl p-6">
         <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-coral/10 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-coral/10 flex items-center justify-center shrink-0">
             <QrCode className="w-5 h-5 text-coral" />
           </div>
           <div>
             <h3 className="font-bold text-ink mb-1">How it works</h3>
             <p className="text-sm text-stone-600 leading-relaxed">
-              The QR code points to your business's destination URL. When customers scan it, they're redirected to leave a Google review. 
-              You can change the destination URL anytime in your dashboard without reprinting the card — just update the link and regenerate.
+              The QR code points to your locked TapReview card URL. NFC taps and QR scans use the same card ID, pass through TapReview for analytics, and redirect to the business destination. The destination can change without reprinting.
             </p>
           </div>
         </div>

@@ -54,6 +54,16 @@ const businessSchema = new mongoose.Schema({
   logo: {
     type: String, // URL to uploaded logo
   },
+  cardDesign: {
+    title: { type: String, default: 'TAP OR SCAN', maxlength: 24 },
+    subtitle: { type: String, default: 'review us on Google', maxlength: 30 },
+    colors: {
+      c1: { type: String, default: '#34A853' },
+      c2: { type: String, default: '#FBBC05' },
+      c3: { type: String, default: '#4285F4' },
+      c4: { type: String, default: '#EA4335' },
+    },
+  },
   coverImage: {
     type: String, // URL to uploaded cover
   },
@@ -85,7 +95,6 @@ const businessSchema = new mongoose.Schema({
 });
 
 // Indexes for performance
-businessSchema.index({ slug: 1 });
 businessSchema.index({ owner: 1 });
 businessSchema.index({ category: 1 });
 businessSchema.index({ isActive: 1 });

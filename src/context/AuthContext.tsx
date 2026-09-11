@@ -1,15 +1,24 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authApi } from '../lib/api';
+import { authApi, AuthUser } from '../lib/api';
 
 // User type
 export interface User {
   id: string;
+  _id?: string;
   username: string;
   email: string;
   fullName: string;
   role: 'admin' | 'business';
+  isActive: boolean;
+  createdBy?: string;
+  lastLoginAt?: string;
   businessId?: string;
 }
+
+const normalizeUser = (authUser: AuthUser): User => ({
+  ...authUser,
+  id: authUser.id || authUser._id || '',
+});
 
 // Auth context type
 interface AuthContextType {
@@ -40,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await authApi.getMe();
       if (response.success && response.data?.user) {
-        setUser(response.data.user);
+        setUser(normalizeUser(response.data.user));
       }
     } catch (error) {
       // Not authenticated or token expired
@@ -55,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await authApi.login(username, password);
     
     if (response.success && response.data?.user) {
-      setUser(response.data.user);
+      setUser(normalizeUser(response.data.user));
     } else {
       throw new Error('Login failed');
     }

@@ -5,8 +5,39 @@ import NfcCard from '../models/NfcCard.js';
 import { Order, Product } from '../models/Order.js';
 import ScanEvent from '../models/ScanEvent.js';
 import { protect, adminOnly } from '../middleware/auth.js';
+import { validate } from '../middleware/validate.js';
+import { audit } from '../utils/audit.js';
+import { success, failure } from '../utils/response.js';
+import { invalidateCache } from './redirect.js';
 
 const router = express.Router();
+
+const provisionOrderCards = async (order) => {
+  if (!order.business || !order.items?.length) return [];
+
+  const business = order.business;
+  const existingCards = await NfcCard.countDocuments({ order: order._id });
+  const requestedCards = order.items.reduce(
+    (total, item) => total + ((item.product?.cardCount || 1) * item.quantity),
+    0,
+  );
+  const cardsToCreate = Math.max(requestedCards - existingCards, 0);
+  if (!cardsToCreate) return [];
+
+  const destinationUrl = business.website || `https://www.google.com/search?q=${encodeURIComponent(business.name)}`;
+  const cards = Array.from({ length: cardsToCreate }, (_, index) => {
+    const cardId = `TR-${order.orderNumber}-${existingCards + index + 1}`.toLowerCase();
+    return {
+      cardId,
+      label: `${business.name} Card ${existingCards + index + 1}`,
+      business: business._id,
+      destinationUrl,
+      order: order._id,
+    };
+  });
+
+  return NfcCard.insertMany(cards, { ordered: true });
+};
 
 // All admin routes require admin role
 router.use(protect, adminOnly);
@@ -35,7 +66,7 @@ router.get('/stats', async (req, res) => {
       .populate('customer', 'fullName email')
       .populate('business', 'name');
 
-    res.json({
+    return success(res, {
       stats: {
         totalBusinesses,
         totalUsers,
@@ -48,7 +79,7 @@ router.get('/stats', async (req, res) => {
     });
   } catch (error) {
     console.error('Admin stats error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -79,78 +110,159 @@ router.get('/businesses', async (req, res) => {
 
     const total = await Business.countDocuments(query);
 
-    res.json({ businesses, total, page: parseInt(page), pages: Math.ceil(total / limit) });
+    return success(res, { businesses, total, page: parseInt(page), pages: Math.ceil(total / limit) });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
 // POST /api/admin/businesses - Admin creates new business + account
-router.post('/businesses', async (req, res) => {
+router.post('/businesses', validate('createBusiness'), async (req, res) => {
+  let user;
+
   try {
     const { username, password, email, fullName, businessName, category } = req.body;
 
     // Validate required fields
     if (!username || !password || !email || !fullName || !businessName || !category) {
-      return res.status(400).json({ error: 'All fields are required' });
+      return failure(res, 'All fields are required', 400);
     }
 
     // Check existing
-    const existing = await User.findOne({
-      $or: [{ username: username.toLowerCase() }, { email: email.toLowerCase() }]
-    });
+    const normalizedUsername = username.toLowerCase().trim();
+    const normalizedEmail = email.toLowerCase().trim();
+    const slug = businessName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    if (!slug) {
+      return failure(res, 'Business name must contain letters or numbers', 400);
+    }
+
+    const [existing, existingBusiness] = await Promise.all([
+      User.findOne({
+        $or: [{ username: normalizedUsername }, { email: normalizedEmail }]
+      }),
+      Business.findOne({ slug }),
+    ]);
+
     if (existing) {
-      return res.status(400).json({ error: 'Username or email already exists' });
+      return failure(res, 'Username or email already exists', 400);
+    }
+    if (existingBusiness) {
+      return failure(res, 'A business with this name already exists', 400);
     }
 
     // Create user account (admin sets credentials)
-    const user = await User.create({
-      username: username.toLowerCase().trim(),
+    user = await User.create({
+      username: normalizedUsername,
       password, // Will be hashed by pre-save hook
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
       fullName: fullName.trim(),
       role: 'business',
       createdBy: req.user._id,
     });
 
     // Create business
-    const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const business = await Business.create({
-      name: businessName,
+      name: businessName.trim(),
       slug,
       category,
       owner: user._id,
     });
 
-    res.status(201).json({
+    await audit(req, {
+      action: 'business_created',
+      targetType: 'business',
+      targetId: business._id.toString(),
+      newValues: { name: business.name, slug: business.slug, owner: business.owner },
+    });
+
+    // Note: we deliberately do NOT echo the plaintext password back here.
+    // The admin already knows it (they just typed it) — returning it in the
+    // response risks it ending up in logs, browser history, or screenshots.
+    return success(res, {
       message: 'Business and account created',
       business,
       credentials: { username: user.username, email: user.email },
-    });
+    }, 201);
   } catch (error) {
     console.error('Admin create business error:', error);
-    if (error.code === 11000) {
-      return res.status(400).json({ error: 'Username or email already exists' });
+    if (user) {
+      await User.findByIdAndDelete(user._id).catch((cleanupError) => {
+        console.error('Admin create business cleanup error:', cleanupError);
+      });
     }
-    res.status(500).json({ error: 'Server error' });
+    if (error.code === 11000) {
+      return failure(res, 'Username, email, or business name already exists', 400);
+    }
+    if (error.name === 'ValidationError') {
+      return failure(
+        res,
+        Object.values(error.errors).map((validationError) => validationError.message).join(', '),
+        400
+      );
+    }
+    return failure(res, 'Server error', 500);
   }
 });
 
 // PUT /api/admin/businesses/:id - Update business
-router.put('/businesses/:id', async (req, res) => {
+router.put('/businesses/:id', validate('updateBusinessAdmin'), async (req, res) => {
   try {
     const { isActive, isSuspended, suspendedReason, plan } = req.body;
-    
+
     const business = await Business.findByIdAndUpdate(
       req.params.id,
       { $set: { isActive, isSuspended, suspendedReason, plan } },
       { new: true }
     );
 
-    if (!business) return res.status(404).json({ error: 'Business not found' });
-    res.json({ business, message: 'Business updated' });
+    if (!business) return failure(res, 'Business not found', 404);
+
+    // CRITICAL: Invalidate every cached card for this business immediately.
+    // Without this, a suspended business's cards keep redirecting for up to
+    // REDIRECT_CACHE_TTL seconds because the cached hit path in redirect.js
+    // never re-checks isSuspended.
+    const businessCards = await NfcCard.find({ business: business._id }).select('cardId');
+    businessCards.forEach((card) => invalidateCache(card.cardId));
+
+    await audit(req, {
+      action: isSuspended ? 'business_suspended' : isActive === false ? 'business_suspended' : 'business_activated',
+      targetType: 'business',
+      targetId: business._id.toString(),
+      newValues: req.body,
+    });
+
+    return success(res, { business, message: 'Business updated' });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
+  }
+});
+
+// PUT /api/admin/businesses/:id/card-design - Save printable card design
+router.put('/businesses/:id/card-design', validate('updateCardDesign'), async (req, res) => {
+  try {
+    const { title, subtitle, colors } = req.body;
+    const business = await Business.findByIdAndUpdate(
+      req.params.id,
+      { $set: { cardDesign: { title, subtitle, colors } } },
+      { new: true, runValidators: true },
+    );
+
+    if (!business) return failure(res, 'Business not found', 404);
+
+    await audit(req, {
+      action: 'design_changed',
+      targetType: 'business',
+      targetId: business._id.toString(),
+      newValues: req.body,
+    });
+
+    return success(res, { business, message: 'Card design saved' });
+  } catch (error) {
+    if (error.name === 'ValidationError') {
+      return failure(res, error.message, 400);
+    }
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -158,7 +270,12 @@ router.put('/businesses/:id', async (req, res) => {
 router.delete('/businesses/:id', async (req, res) => {
   try {
     const business = await Business.findById(req.params.id);
-    if (!business) return res.status(404).json({ error: 'Business not found' });
+    if (!business) return failure(res, 'Business not found', 404);
+
+    // Invalidate any cached redirects for this business's cards before
+    // deleting them, so nothing serves a stale cached hit afterward.
+    const businessCards = await NfcCard.find({ business: business._id }).select('cardId');
+    businessCards.forEach((card) => invalidateCache(card.cardId));
 
     // Delete associated data
     await Promise.all([
@@ -167,9 +284,16 @@ router.delete('/businesses/:id', async (req, res) => {
       Business.findByIdAndDelete(business._id),
     ]);
 
-    res.json({ message: 'Business and associated data deleted' });
+    await audit(req, {
+      action: 'business_deleted',
+      targetType: 'business',
+      targetId: business._id.toString(),
+      previousValues: { name: business.name, slug: business.slug },
+    });
+
+    return success(res, { message: 'Business and associated data deleted' });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -183,19 +307,19 @@ router.get('/cards', async (req, res) => {
     const cards = await NfcCard.find()
       .populate('business', 'name slug')
       .sort({ createdAt: -1 });
-    res.json({ cards });
+    return success(res, { cards });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
 // POST /api/admin/cards - Admin creates/assigns NFC card
-router.post('/cards', async (req, res) => {
+router.post('/cards', validate('createCard'), async (req, res) => {
   try {
     const { cardId, businessId, destinationUrl, label } = req.body;
 
     const business = await Business.findById(businessId);
-    if (!business) return res.status(404).json({ error: 'Business not found' });
+    if (!business) return failure(res, 'Business not found', 404);
 
     const card = await NfcCard.create({
       cardId,
@@ -204,28 +328,68 @@ router.post('/cards', async (req, res) => {
       label,
     });
 
-    res.status(201).json({ card, message: 'Card created and assigned' });
+    await audit(req, {
+      action: 'card_created',
+      targetType: 'card',
+      targetId: card._id.toString(),
+      newValues: { cardId, business: business._id, label },
+    });
+
+    return success(res, { card, message: 'Card created and assigned' }, 201);
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(400).json({ error: 'Card ID already exists' });
+      return failure(res, 'Card ID already exists', 400);
     }
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
 // PUT /api/admin/cards/:id - Admin updates card
-router.put('/cards/:id', async (req, res) => {
+router.put('/cards/:id', validate('updateAdminCard'), async (req, res) => {
   try {
     const { isActive, destinationUrl, label } = req.body;
+    const previousCard = await NfcCard.findById(req.params.id);
+    if (!previousCard) return failure(res, 'Card not found', 404);
+
     const card = await NfcCard.findByIdAndUpdate(
       req.params.id,
       { $set: { isActive, destinationUrl, label } },
-      { new: true }
+      { new: true, runValidators: true }
     );
-    if (!card) return res.status(404).json({ error: 'Card not found' });
-    res.json({ card });
+    if (!card) return failure(res, 'Card not found', 404);
+
+    // CRITICAL: Invalidate the redirect cache for this card whenever an
+    // admin changes its destination or active status — otherwise the
+    // change silently doesn't take effect until the cache TTL expires.
+    if (
+      (destinationUrl && destinationUrl !== previousCard.destinationUrl) ||
+      (isActive !== undefined && isActive !== previousCard.isActive)
+    ) {
+      invalidateCache(card.cardId);
+    }
+
+    if (destinationUrl && destinationUrl !== previousCard.destinationUrl) {
+      await audit(req, {
+        action: 'destination_changed',
+        targetType: 'card',
+        targetId: card._id.toString(),
+        previousValues: { destinationUrl: previousCard.destinationUrl },
+        newValues: { destinationUrl },
+      });
+    }
+    if (isActive !== undefined && isActive !== previousCard.isActive) {
+      await audit(req, {
+        action: isActive ? 'card_activated' : 'card_deactivated',
+        targetType: 'card',
+        targetId: card._id.toString(),
+        previousValues: { isActive: previousCard.isActive },
+        newValues: { isActive },
+      });
+    }
+
+    return success(res, { card });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -246,24 +410,52 @@ router.get('/orders', async (req, res) => {
       .limit(parseInt(limit));
 
     const total = await Order.countDocuments(query);
-    res.json({ orders, total });
+    return success(res, { orders, total });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
-router.put('/orders/:id/status', async (req, res) => {
+router.put('/orders/:id/status', validate('updateOrderStatus'), async (req, res) => {
   try {
-    const { status, trackingNumber } = req.body;
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      { $set: { status, trackingNumber } },
-      { new: true }
-    );
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    res.json({ order, message: 'Order status updated' });
+    const { status, trackingNumber, trackingUrl, adminNotes } = req.body;
+    const allowedStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+    if (!allowedStatuses.includes(status)) {
+      return failure(res, 'Invalid order status', 400);
+    }
+    const order = await Order.findById(req.params.id)
+      .populate('business', 'name website')
+      .populate('items.product', 'cardCount');
+    if (!order) return failure(res, 'Order not found', 404);
+
+    order.status = status;
+    order.trackingNumber = trackingNumber;
+    order.trackingUrl = trackingUrl;
+    order.adminNotes = adminNotes;
+    await order.save();
+
+    if (status === 'processing') {
+      await audit(req, {
+        action: 'order_approved',
+        targetType: 'order',
+        targetId: order._id.toString(),
+        newValues: { status },
+      });
+    }
+
+    if (status === 'delivered') {
+      await provisionOrderCards(order);
+      await audit(req, {
+        action: 'order_delivered',
+        targetType: 'order',
+        targetId: order._id.toString(),
+        newValues: { status },
+      });
+    }
+
+    return success(res, { order, message: 'Order status updated' });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -276,13 +468,13 @@ router.get('/users', async (req, res) => {
     const users = await User.find()
       .select('-password')
       .sort({ createdAt: -1 });
-    res.json({ users });
+    return success(res, { users });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
-router.put('/users/:id', async (req, res) => {
+router.put('/users/:id', validate('updateUser'), async (req, res) => {
   try {
     const { isActive, role } = req.body;
     const user = await User.findByIdAndUpdate(
@@ -291,10 +483,18 @@ router.put('/users/:id', async (req, res) => {
       { new: true }
     ).select('-password');
 
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ user });
+    if (!user) return failure(res, 'User not found', 404);
+
+    await audit(req, {
+      action: 'user_updated',
+      targetType: 'user',
+      targetId: user._id.toString(),
+      newValues: { isActive, role },
+    });
+
+    return success(res, { user });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
