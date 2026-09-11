@@ -3,6 +3,7 @@ import ScanEvent from '../models/ScanEvent.js';
 import NfcCard from '../models/NfcCard.js';
 import Business from '../models/Business.js';
 import { protect, businessOnly } from '../middleware/auth.js';
+import { success, failure } from '../utils/response.js';
 
 const router = express.Router();
 
@@ -10,7 +11,7 @@ const router = express.Router();
 router.get('/overview', protect, businessOnly, async (req, res) => {
   try {
     const business = await Business.findOne({ owner: req.user._id });
-    if (!business) return res.status(404).json({ error: 'Business not found' });
+    if (!business) return failure(res, 'Business not found', 404);
 
     const cards = await NfcCard.find({ business: business._id });
     const cardIds = cards.map(c => c._id);
@@ -28,7 +29,7 @@ router.get('/overview', protect, businessOnly, async (req, res) => {
       ScanEvent.distinct('visitorHash', { card: { $in: cardIds }, timestamp: { $gte: monthStart } }),
     ]);
 
-    res.json({
+    return success(res, {
       totalScans,
       todayScans,
       weekScans,
@@ -37,7 +38,7 @@ router.get('/overview', protect, businessOnly, async (req, res) => {
       totalCards: cards.length,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -46,7 +47,7 @@ router.get('/timeline', protect, businessOnly, async (req, res) => {
   try {
     const { period = '30d' } = req.query;
     const business = await Business.findOne({ owner: req.user._id });
-    if (!business) return res.status(404).json({ error: 'Business not found' });
+    if (!business) return failure(res, 'Business not found', 404);
 
     const cards = await NfcCard.find({ business: business._id });
     const cardIds = cards.map(c => c._id);
@@ -75,9 +76,9 @@ router.get('/timeline', protect, businessOnly, async (req, res) => {
       },
     ]);
 
-    res.json({ timeline });
+    return success(res, { timeline });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -85,7 +86,7 @@ router.get('/timeline', protect, businessOnly, async (req, res) => {
 router.get('/devices', protect, businessOnly, async (req, res) => {
   try {
     const business = await Business.findOne({ owner: req.user._id });
-    if (!business) return res.status(404).json({ error: 'Business not found' });
+    if (!business) return failure(res, 'Business not found', 404);
 
     const cards = await NfcCard.find({ business: business._id });
     const cardIds = cards.map(c => c._id);
@@ -108,9 +109,9 @@ router.get('/devices', protect, businessOnly, async (req, res) => {
       { $sort: { count: -1 } },
     ]);
 
-    res.json({ devices: deviceStats, os: osStats, browsers: browserStats });
+    return success(res, { devices: deviceStats, os: osStats, browsers: browserStats });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -118,7 +119,7 @@ router.get('/devices', protect, businessOnly, async (req, res) => {
 router.get('/cards', protect, businessOnly, async (req, res) => {
   try {
     const business = await Business.findOne({ owner: req.user._id });
-    if (!business) return res.status(404).json({ error: 'Business not found' });
+    if (!business) return failure(res, 'Business not found', 404);
 
     const cards = await NfcCard.find({ business: business._id });
 
@@ -126,7 +127,7 @@ router.get('/cards', protect, businessOnly, async (req, res) => {
       cards.map(async (card) => {
         const totalScans = await ScanEvent.countDocuments({ card: card._id });
         const uniqueVisitors = await ScanEvent.distinct('visitorHash', { card: card._id });
-        
+
         return {
           cardId: card.cardId,
           label: card.label,
@@ -139,9 +140,9 @@ router.get('/cards', protect, businessOnly, async (req, res) => {
       })
     );
 
-    res.json({ cards: cardStats });
+    return success(res, { cards: cardStats });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -149,7 +150,7 @@ router.get('/cards', protect, businessOnly, async (req, res) => {
 router.get('/peak-hours', protect, businessOnly, async (req, res) => {
   try {
     const business = await Business.findOne({ owner: req.user._id });
-    if (!business) return res.status(404).json({ error: 'Business not found' });
+    if (!business) return failure(res, 'Business not found', 404);
 
     const cards = await NfcCard.find({ business: business._id });
     const cardIds = cards.map(c => c._id);
@@ -172,9 +173,9 @@ router.get('/peak-hours', protect, businessOnly, async (req, res) => {
       return { hour: i, count: found?.count || 0 };
     });
 
-    res.json({ peakHours: hours });
+    return success(res, { peakHours: hours });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    return failure(res, 'Server error', 500);
   }
 });
 
