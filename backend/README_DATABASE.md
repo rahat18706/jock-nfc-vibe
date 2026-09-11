@@ -77,6 +77,25 @@ node test-db.js
 npm run seed
 ```
 
+## Local and Hosted Configuration
+
+The backend reads configuration from environment variables. The included `.env` uses a local MongoDB instance:
+
+```env
+MONGODB_URI=mongodb://127.0.0.1:27017/tapreview
+```
+
+For MongoDB Atlas or a hosting provider, set `MONGODB_URI` in the provider's environment settings instead of committing credentials. Also set `NODE_ENV=production`, `JWT_SECRET` to a random value of at least 32 characters, and `FRONTEND_URL` to the deployed frontend URL.
+
+Start locally with:
+
+```bash
+npm install
+npm run dev
+```
+
+The server listens on `PORT` (default `5000`) and `0.0.0.0`, so it works with platform-assigned ports when hosted. Check it with `GET /api/health`.
+
 **Expected Output:**
 ```
 ✓ Connected to MongoDB

@@ -56,11 +56,10 @@ const scanEventSchema = new mongoose.Schema({
     maxlength: 500,
   },
   // Timestamp
-  timestamp: {
-    type: Date,
-    default: Date.now,
-    index: true,
-  },
+    timestamp: {
+      type: Date,
+      default: Date.now,
+    },
 }, {
   timestamps: false, // We use custom 'timestamp' field
 });

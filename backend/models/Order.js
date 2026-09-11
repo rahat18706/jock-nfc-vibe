@@ -34,6 +34,11 @@ const productSchema = new mongoose.Schema({
     enum: ['nfc', 'qr', 'both'],
     default: 'both',
   },
+  cardCount: {
+    type: Number,
+    required: true,
+    min: 1,
+  },
   // Customization options
   customization: {
     logo: { type: Boolean, default: true },
@@ -153,7 +158,6 @@ const orderSchema = new mongoose.Schema({
 });
 
 // Indexes
-orderSchema.index({ orderNumber: 1 });
 orderSchema.index({ customer: 1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ createdAt: -1 });

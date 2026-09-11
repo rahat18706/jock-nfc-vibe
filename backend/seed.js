@@ -112,9 +112,9 @@ async function seed() {
     const productExists = await Product.findOne({});
     if (!productExists) {
       await Product.create([
-        { name: 'Starter Pack', slug: 'starter', price: 29, cardType: 'both', description: '1 NFC card + QR code' },
-        { name: 'Professional Pack', slug: 'professional', price: 79, cardType: 'both', description: '5 NFC cards + QR codes' },
-        { name: 'Enterprise Pack', slug: 'enterprise', price: 199, cardType: 'both', description: 'Unlimited NFC cards' },
+        { name: 'Starter Pack', slug: 'starter', price: 29, cardCount: 1, cardType: 'both', description: '1 NFC card + QR code' },
+        { name: 'Professional Pack', slug: 'professional', price: 79, cardCount: 5, cardType: 'both', description: '5 NFC cards + QR codes' },
+        { name: 'Enterprise Pack', slug: 'enterprise', price: 199, cardCount: 10, cardType: 'both', description: '10 NFC cards + QR codes' },
       ]);
       console.log('✓ Products created');
     }

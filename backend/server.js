@@ -8,6 +8,8 @@ import { validateEnv, envConfig } from './config/env.js';
 import logger, { requestLogger, errorLogger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { apiLimiter, authLimiter, securityHeaders, detectBot, requestSizeLimiter } from './middleware/security.js';
+import User from './models/User.js';
+import { Product } from './models/Order.js';
 
 // Route imports
 import authRoutes from './routes/auth.js';
@@ -163,14 +165,77 @@ app.use(errorHandler);
 // START SERVER
 // ============================================
 
+export const ensureDefaultAdmin = async () => {
+  try {
+    const adminExists = await User.findOne({ role: 'admin' });
+    if (!adminExists) {
+      await User.create({
+        username: 'admin',
+        password: 'admin123',
+        email: 'admin@tapreview.com',
+        fullName: 'Platform Admin',
+        role: 'admin',
+        isActive: true,
+      });
+      logger.info('Default admin user created: username=admin, password=admin123');
+    }
+  } catch (error) {
+    logger.error('Failed to ensure default admin user:', { error: error.message, stack: error.stack });
+    throw error;
+  }
+};
+
+export const ensureDefaultProducts = async () => {
+  const defaultProducts = [
+    {
+      name: 'Starter Pack',
+      slug: 'starter',
+      price: 29,
+      cardCount: 1,
+      cardType: 'both',
+      description: '1 NFC card + QR code',
+    },
+    {
+      name: 'Professional Pack',
+      slug: 'professional',
+      price: 79,
+      cardCount: 5,
+      cardType: 'both',
+      description: '5 NFC cards + QR codes',
+    },
+    {
+      name: 'Enterprise Pack',
+      slug: 'enterprise',
+      price: 199,
+      cardCount: 10,
+      cardType: 'both',
+      description: '10 NFC cards + QR codes',
+    },
+  ];
+
+  const productCount = await Product.countDocuments();
+  if (productCount === 0) {
+    await Product.create(defaultProducts);
+    logger.info('Default card packages created');
+    return;
+  }
+
+  await Promise.all(defaultProducts.map((product) => Product.updateOne(
+    { slug: product.slug },
+    { $set: { cardCount: product.cardCount } },
+  )));
+};
+
 const startServer = async () => {
   try {
     // Connect to MongoDB Atlas
     await connectDB();
-    
+    await ensureDefaultAdmin();
+    await ensureDefaultProducts();
+
     const PORT = envConfig.port;
-    
-    app.listen(PORT, () => {
+
+    app.listen(PORT, '0.0.0.0', () => {
       logger.info(`
 ╔══════════════════════════════════════════╗
 ║     TapReview Backend API Server         ║
@@ -186,6 +251,8 @@ const startServer = async () => {
   }
 };
 
-startServer();
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
 
 export default app;

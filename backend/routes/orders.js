@@ -45,10 +45,18 @@ router.post('/', protect, async (req, res) => {
 
     // Generate order number
     const orderNumber = `TR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    const business = req.user.role === 'business'
+      ? await Business.findOne({ owner: req.user._id })
+      : null;
+
+    if (req.user.role === 'business' && !business) {
+      return res.status(400).json({ error: 'Business profile not found' });
+    }
 
     const order = await Order.create({
       orderNumber,
       customer: req.user._id,
+      business: business?._id,
       items: orderItems,
       subtotal,
       discount: 0,
@@ -69,7 +77,14 @@ router.post('/', protect, async (req, res) => {
 // GET /api/orders/my - Get my orders
 router.get('/my', protect, async (req, res) => {
   try {
-    const orders = await Order.find({ customer: req.user._id })
+    const business = req.user.role === 'business'
+      ? await Business.findOne({ owner: req.user._id }).select('_id')
+      : null;
+    const query = business
+      ? { $or: [{ customer: req.user._id }, { business: business._id }] }
+      : { customer: req.user._id };
+    const orders = await Order.find(query)
+      .populate('items.product', 'name slug')
       .sort({ createdAt: -1 });
     res.json({ orders });
   } catch (error) {
