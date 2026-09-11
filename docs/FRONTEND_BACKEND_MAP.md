@@ -1,83 +1,67 @@
-# Frontend ↔ Backend Connection Map
+# Frontend ↔ Backend Map
 
 **Version:** 1.0  
-**Purpose:** Map every frontend page to backend implementation  
-**Last Updated:** 2024
+**Last Updated:** 2024-01-XX  
+**Status:** Phase 1 Implementation Complete
 
 ---
 
-## How to Use This Document
+## Overview
 
-This document shows the complete flow from frontend UI to database for every feature.
-
-**Flow:**
-```
-Frontend Page
-    ↓
-API Call
-    ↓
-Route
-    ↓
-Middleware
-    ↓
-Controller
-    ↓
-Service
-    ↓
-Model
-    ↓
-Database
-```
+This document maps every frontend page to its corresponding backend API endpoints, showing the complete data flow from UI to database.
 
 ---
 
 ## Authentication Flow
 
-### 1. Login Page
+### Login Page
 
 **Frontend:** `src/pages/LoginPage.tsx`
 
 **User Action:**
-1. User enters username + password
+1. User enters username and password
 2. Clicks "Login" button
 
 **API Call:**
-```javascript
+```
 POST /api/auth/login
 Body: { username, password }
 ```
 
 **Backend Flow:**
 ```
-Route: POST /api/auth/login
+LoginPage.tsx
     ↓
-Middleware: rateLimit (5 req/15min), validate(loginSchema)
+useAuth().login(username, password)
     ↓
-Controller: authController.login
+authApi.login(username, password)
     ↓
-Service: authService.authenticateUser
+POST /api/auth/login
     ↓
-Model: User.findOne({ username })
+auth.controller.js → login()
     ↓
-Database: users collection
+User.findOne({ username })
     ↓
-Service: Compare password hash (bcrypt)
+bcrypt.compare(password)
     ↓
-Service: Generate JWT token
+Generate JWT token
     ↓
-Controller: Set HttpOnly cookie
+Set HttpOnly cookie
     ↓
-Response: { success: true, data: { user, token } }
+Return { success: true, data: { user, token } }
+    ↓
+AuthContext stores user
+    ↓
+Navigate to /dashboard or /admin based on role
 ```
 
 **Files:**
 - Frontend: `src/pages/LoginPage.tsx`
-- API Service: `src/services/api.ts` → `authAPI.login()`
-- Route: `backend/src/routes/auth.routes.js`
-- Controller: `backend/src/controllers/auth.controller.js` → `login()`
-- Service: `backend/src/services/auth.service.js` → `authenticateUser()`
-- Model: `backend/src/models/User.js`
-- Validator: `backend/src/validators/auth.validators.js` → `loginSchema`
+- API Client: `src/lib/api.ts` → `authApi.login()`
+- Context: `src/context/AuthContext.tsx` → `login()`
+- Backend Route: `backend/routes/auth.js` → `POST /login`
+- Backend Controller: `backend/controllers/auth.controller.js` → `login()`
+- Backend Model: `backend/models/User.js`
 
 **Response Handling:**
 ```javascript
@@ -89,9 +73,8 @@ Response: { success: true, data: { user, token } }
     token: "eyJhbGc..."
   }
 }
-→ Store token in localStorage
-→ Store user in context
-→ Redirect to dashboard based on role
+→ Store user in AuthContext
+→ Redirect based on role
 
 // Error
 {
@@ -102,12 +85,11 @@ Response: { success: true, data: { user, token } }
   }
 }
 → Show error message
-→ Don't reveal if username or password is wrong
 ```
 
 ---
 
-### 2. Logout
+### Logout
 
 **Frontend:** Any page with logout button
 
@@ -115,824 +97,666 @@ Response: { success: true, data: { user, token } }
 1. Clicks "Logout" button
 
 **API Call:**
-```javascript
+```
 POST /api/auth/logout
-Headers: { Authorization: Bearer <token> }
 ```
 
 **Backend Flow:**
 ```
-Route: POST /api/auth/logout
+Logout Button
     ↓
-Middleware: authMiddleware (verify JWT)
+useAuth().logout()
     ↓
-Controller: authController.logout
+authApi.logout()
     ↓
-Service: Clear HttpOnly cookie
+POST /api/auth/logout
     ↓
-Response: { success: true, data: { message: "Logged out" } }
+Clear HttpOnly cookie
+    ↓
+Return { success: true, message: "Logged out" }
+    ↓
+AuthContext clears user
+    ↓
+Navigate to /login
 ```
 
 **Files:**
-- Frontend: `src/components/LogoutButton.tsx`
-- API Service: `src/services/api.ts` → `authAPI.logout()`
-- Route: `backend/src/routes/auth.routes.js`
-- Controller: `backend/src/controllers/auth.controller.js` → `logout()`
-
-**Response Handling:**
-```javascript
-// Success
-{
-  success: true,
-  data: { message: "Logged out successfully" }
-}
-→ Clear localStorage
-→ Clear context
-→ Redirect to login page
-```
+- Frontend: `src/context/AuthContext.tsx` → `logout()`
+- API Client: `src/lib/api.ts` → `authApi.logout()`
+- Backend Route: `backend/routes/auth.js` → `POST /logout`
 
 ---
 
-## Admin Flows
+## Business Dashboard Flow
 
-### 3. Admin Dashboard
+### Dashboard Overview
 
-**Frontend:** `src/pages/AdminDashboard.tsx`
+**Frontend:** `src/pages/DashboardPage.tsx` (activeTab === 'overview')
 
 **User Action:**
-1. Admin logs in
-2. Redirected to admin dashboard
-3. Dashboard loads stats
+1. Business user logs in
+2. Redirected to /dashboard
+3. Dashboard loads
 
 **API Calls:**
-```javascript
-GET /api/auth/me
-GET /api/admin/analytics/stats
+```
+GET /api/businesses/my
+GET /api/businesses/my/cards
+GET /api/analytics/overview
 ```
 
 **Backend Flow:**
 ```
-Route: GET /api/admin/analytics/stats
+DashboardPage.tsx mounts
     ↓
-Middleware: authMiddleware, roleMiddleware('admin')
+useEffect → fetchData()
     ↓
-Controller: adminAnalyticsController.getStats
+Promise.all([
+  businessApi.getMyBusiness(),
+  businessApi.getMyCards(),
+  analyticsApi.getOverview()
+])
     ↓
-Service: analyticsService.getPlatformStats
+GET /api/businesses/my
+GET /api/businesses/my/cards
+GET /api/analytics/overview
     ↓
-Model: Business.countDocuments()
-Model: NfcCard.countDocuments()
-Model: ScanEvent.countDocuments()
+business.controller.js → getMyBusiness()
+business.controller.js → getMyCards()
+analytics.controller.js → getOverview()
     ↓
-Database: businesses, nfccards, scanevents collections
+Business.findOne({ owner: req.user._id })
+NfcCard.find({ business: business._id })
+ScanEvent.aggregate(...)
     ↓
-Response: { success: true, data: { stats } }
+Return business, cards, stats
+    ↓
+Set state: business, cards, stats
+    ↓
+Render dashboard with real data
 ```
 
 **Files:**
-- Frontend: `src/pages/AdminDashboard.tsx`
-- API Service: `src/services/api.ts` → `adminAPI.getStats()`
-- Route: `backend/src/routes/admin.routes.js`
-- Controller: `backend/src/controllers/adminAnalytics.controller.js` → `getStats()`
-- Service: `backend/src/services/analytics.service.js` → `getPlatformStats()`
-- Models: `Business.js`, `NfcCard.js`, `ScanEvent.js`
-
-**Data Displayed:**
-- Total businesses (active/suspended)
-- Total cards (active/unassigned/suspended)
-- Total scans (today/week/month)
-- Recent activity
-
----
-
-### 4. Admin - List Businesses
-
-**Frontend:** `src/pages/admin/BusinessList.tsx`
-
-**User Action:**
-1. Clicks "Businesses" menu
-2. Page loads business list
-3. Can search, filter, paginate
-
-**API Call:**
-```javascript
-GET /api/admin/businesses?page=1&limit=20&search=joe&status=active
-```
-
-**Backend Flow:**
-```
-Route: GET /api/admin/businesses
-    ↓
-Middleware: authMiddleware, roleMiddleware('admin')
-    ↓
-Controller: adminBusinessController.list
-    ↓
-Service: businessService.getAllBusinesses
-    ↓
-Model: Business.find().populate('owner').paginate()
-    ↓
-Database: businesses collection (with user population)
-    ↓
-Response: { success: true, data: { businesses }, pagination }
-```
-
-**Files:**
-- Frontend: `src/pages/admin/BusinessList.tsx`
-- API Service: `src/services/api.ts` → `adminAPI.getBusinesses()`
-- Route: `backend/src/routes/admin.routes.js`
-- Controller: `backend/src/controllers/adminBusiness.controller.js` → `list()`
-- Service: `backend/src/services/business.service.js` → `getAllBusinesses()`
-- Model: `backend/src/models/Business.js`
-
-**Table Columns:**
-- Business name
-- Owner name
-- Category
-- Card count
-- Status (active/suspended)
-- Created date
-- Actions (view, edit, suspend)
-
----
-
-### 5. Admin - Create Business
-
-**Frontend:** `src/pages/admin/CreateBusiness.tsx`
-
-**User Action:**
-1. Clicks "Create Business" button
-2. Fills form (name, category, owner details)
-3. Clicks "Create"
-
-**API Call:**
-```javascript
-POST /api/admin/businesses
-Body: {
-  name: "Joe's Restaurant",
-  category: "restaurant",
-  ownerName: "Joe Smith",
-  ownerEmail: "joe@example.com",
-  ownerUsername: "joesrestaurant",
-  temporaryPassword: "TempPass123!",
-  phone: "+1-555-0123",
-  address: { ... }
-}
-```
-
-**Backend Flow:**
-```
-Route: POST /api/admin/businesses
-    ↓
-Middleware: authMiddleware, roleMiddleware('admin'), validate(createBusinessSchema)
-    ↓
-Controller: adminBusinessController.create
-    ↓
-Service: businessService.createBusiness
-    ↓
-Step 1: Check if email/username exists
-    ↓
-Step 2: Create User (role: business)
-    ↓
-Step 3: Create Business (ownerId: user._id)
-    ↓
-Step 4: Generate slug from name
-    ↓
-Step 5: Log audit (action: 'business_created')
-    ↓
-Model: User.create(), Business.create(), AuditLog.create()
-    ↓
-Database: users, businesses, auditlogs collections
-    ↓
-Response: { success: true, data: { business, credentials } }
-```
-
-**Files:**
-- Frontend: `src/pages/admin/CreateBusiness.tsx`
-- API Service: `src/services/api.ts` → `adminAPI.createBusiness()`
-- Route: `backend/src/routes/admin.routes.js`
-- Controller: `backend/src/controllers/adminBusiness.controller.js` → `create()`
-- Service: `backend/src/services/business.service.js` → `createBusiness()`
-- Models: `User.js`, `Business.js`, `AuditLog.js`
-- Validator: `backend/src/validators/business.validators.js` → `createBusinessSchema`
-
-**Response Handling:**
-```javascript
-// Success
-{
-  success: true,
-  data: {
-    business: { id, name, slug, ... },
-    credentials: {
-      username: "joesrestaurant",
-      temporaryPassword: "TempPass123!",
-      loginUrl: "https://tapreview.com/login"
-    }
-  }
-}
-→ Show success message
-→ Display credentials (ONLY TIME they're shown)
-→ Admin must share credentials securely
-
-// Error - Duplicate email
-{
-  success: false,
-  error: {
-    code: "DUPLICATE_EMAIL",
-    message: "Email already exists"
-  }
-}
-→ Show error message
-
-// Error - Validation
-{
-  success: false,
-  error: {
-    code: "VALIDATION_ERROR",
-    message: "Validation failed",
-    details: {
-      ownerEmail: "Invalid email format"
-    }
-  }
-}
-→ Show field-specific errors
-```
-
----
-
-### 6. Admin - List Cards
-
-**Frontend:** `src/pages/admin/CardList.tsx`
-
-**User Action:**
-1. Clicks "Cards" menu
-2. Page loads card list
-3. Can filter by status, business
-
-**API Call:**
-```javascript
-GET /api/admin/cards?status=active&businessId=biz_xyz&page=1
-```
-
-**Backend Flow:**
-```
-Route: GET /api/admin/cards
-    ↓
-Middleware: authMiddleware, roleMiddleware('admin')
-    ↓
-Controller: adminCardController.list
-    ↓
-Service: cardService.getAllCards
-    ↓
-Model: NfcCard.find().populate('business').paginate()
-    ↓
-Database: nfccards collection
-    ↓
-Response: { success: true, data: { cards }, pagination }
-```
-
-**Files:**
-- Frontend: `src/pages/admin/CardList.tsx`
-- API Service: `src/services/api.ts` → `adminAPI.getCards()`
-- Route: `backend/src/routes/admin.routes.js`
-- Controller: `backend/src/controllers/adminCard.controller.js` → `list()`
-- Service: `backend/src/services/card.service.js` → `getAllCards()`
-- Model: `backend/src/models/NfcCard.js`
-
-**Table Columns:**
-- Public Card ID (JOCK-A7F92K)
-- Label
-- Status (unassigned/active/suspended/retired)
-- Business name
-- Destination URL
-- Total scans
-- Actions (assign, suspend, retire)
-
----
-
-### 7. Admin - Create Card
-
-**Frontend:** `src/pages/admin/CreateCard.tsx`
-
-**User Action:**
-1. Clicks "Create Card" button
-2. Fills form (label, serial number)
-3. Clicks "Create"
-
-**API Call:**
-```javascript
-POST /api/admin/cards
-Body: {
-  label: "Table 1",
-  serialNumber: "SN-2024-001235",
-  type: "both"
-}
-```
-
-**Backend Flow:**
-```
-Route: POST /api/admin/cards
-    ↓
-Middleware: authMiddleware, roleMiddleware('admin'), validate(createCardSchema)
-    ↓
-Controller: adminCardController.create
-    ↓
-Service: cardService.createCard
-    ↓
-Step 1: Generate publicCardId (JOCK-XXXXXX)
-    ↓
-Step 2: Check if publicCardId exists (retry if needed)
-    ↓
-Step 3: Create NfcCard (status: unassigned)
-    ↓
-Step 4: Log audit (action: 'card_created')
-    ↓
-Model: NfcCard.create(), AuditLog.create()
-    ↓
-Database: nfccards, auditlogs collections
-    ↓
-Response: { success: true, data: { card } }
-```
-
-**Files:**
-- Frontend: `src/pages/admin/CreateCard.tsx`
-- API Service: `src/services/api.ts` → `adminAPI.createCard()`
-- Route: `backend/src/routes/admin.routes.js`
-- Controller: `backend/src/controllers/adminCard.controller.js` → `create()`
-- Service: `backend/src/services/card.service.js` → `createCard()`
-- Model: `backend/src/models/NfcCard.js`, `AuditLog.js`
-
-**publicCardId Generation:**
-```javascript
-// Generate random alphanumeric string
-const generatePublicCardId = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I, O, 0, 1
-  let id = 'JOCK-';
-  for (let i = 0; i < 6; i++) {
-    id += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return id;
-};
-```
-
----
-
-### 8. Admin - Assign Card to Business
-
-**Frontend:** `src/pages/admin/AssignCard.tsx`
-
-**User Action:**
-1. Clicks "Assign" on unassigned card
-2. Selects business from dropdown
-3. Enters destination URL
-4. Clicks "Assign"
-
-**API Call:**
-```javascript
-POST /api/admin/cards/:id/assign
-Body: {
-  businessId: "biz_xyz789",
-  destinationUrl: "https://g.page/r/joes-restaurant",
-  label: "Main Counter"
-}
-```
-
-**Backend Flow:**
-```
-Route: POST /api/admin/cards/:id/assign
-    ↓
-Middleware: authMiddleware, roleMiddleware('admin'), validate(assignCardSchema)
-    ↓
-Controller: adminCardController.assign
-    ↓
-Service: cardService.assignCard
-    ↓
-Step 1: Find card by ID
-    ↓
-Step 2: Check card status === 'unassigned'
-    ↓
-Step 3: Find business by ID
-    ↓
-Step 4: Check business status === 'active'
-    ↓
-Step 5: Check business.cardCount < business.cardLimit
-    ↓
-Step 6: Validate destinationUrl
-    ↓
-Step 7: Update card (businessId, destinationUrl, status: 'active')
-    ↓
-Step 8: Increment business.cardCount
-    ↓
-Step 9: Log audit (action: 'card_assigned')
-    ↓
-Model: NfcCard.findOneAndUpdate(), Business.findOneAndUpdate(), AuditLog.create()
-    ↓
-Database: nfccards, businesses, auditlogs collections
-    ↓
-Response: { success: true, data: { card } }
-```
-
-**Files:**
-- Frontend: `src/pages/admin/AssignCard.tsx`
-- API Service: `src/services/api.ts` → `adminAPI.assignCard()`
-- Route: `backend/src/routes/admin.routes.js`
-- Controller: `backend/src/controllers/adminCard.controller.js` → `assign()`
-- Service: `backend/src/services/card.service.js` → `assignCard()`
-- Models: `NfcCard.js`, `Business.js`, `AuditLog.js`
-
-**Validation:**
-```javascript
-// Card must be unassigned
-if (card.status !== 'unassigned') {
-  throw new AppError('Card already assigned', 400, 'CARD_ALREADY_ASSIGNED');
-}
-
-// Business must be active
-if (business.status !== 'active') {
-  throw new AppError('Business is not active', 400, 'BUSINESS_NOT_ACTIVE');
-}
-
-// Business must have capacity
-if (business.cardCount >= business.cardLimit) {
-  throw new AppError('Card limit exceeded', 400, 'BUSINESS_CARD_LIMIT_EXCEEDED');
-}
-
-// URL must be valid
-if (!isValidDestinationUrl(destinationUrl)) {
-  throw new AppError('Invalid URL', 400, 'INVALID_URL');
-}
-```
-
----
-
-### 9. Admin - Suspend Business
-
-**Frontend:** `src/pages/admin/BusinessList.tsx` (action button)
-
-**User Action:**
-1. Clicks "Suspend" on business
-2. Enters reason
-3. Confirms
-
-**API Call:**
-```javascript
-PATCH /api/admin/businesses/:id/suspend
-Body: { reason: "Violation of terms" }
-```
-
-**Backend Flow:**
-```
-Route: PATCH /api/admin/businesses/:id/suspend
-    ↓
-Middleware: authMiddleware, roleMiddleware('admin')
-    ↓
-Controller: adminBusinessController.suspend
-    ↓
-Service: businessService.suspendBusiness
-    ↓
-Step 1: Find business by ID
-    ↓
-Step 2: Update status to 'suspended'
-    ↓
-Step 3: Suspend all business cards
-    ↓
-Step 4: Log audit (action: 'business_suspended')
-    ↓
-Model: Business.findOneAndUpdate(), NfcCard.updateMany(), AuditLog.create()
-    ↓
-Database: businesses, nfccards, auditlogs collections
-    ↓
-Response: { success: true, data: { business } }
-```
-
-**Files:**
-- Frontend: `src/pages/admin/BusinessList.tsx`
-- API Service: `src/services/api.ts` → `adminAPI.suspendBusiness()`
-- Route: `backend/src/routes/admin.routes.js`
-- Controller: `backend/src/controllers/adminBusiness.controller.js` → `suspend()`
-- Service: `backend/src/services/business.service.js` → `suspendBusiness()`
-- Models: `Business.js`, `NfcCard.js`, `AuditLog.js`
-
-**Side Effects:**
-- Business cannot log in
-- All business cards stop redirecting
-- Business owner notified (Phase 2)
-
----
-
-## Business Flows
-
-### 10. Business Dashboard
-
-**Frontend:** `src/pages/BusinessDashboard.tsx`
-
-**User Action:**
-1. Business logs in
-2. Redirected to business dashboard
-3. Dashboard loads profile + cards + stats
-
-**API Calls:**
-```javascript
-GET /api/auth/me
-GET /api/business/profile
-GET /api/business/cards
-GET /api/business/analytics/overview
-```
-
-**Backend Flow:**
-```
-Route: GET /api/business/profile
-    ↓
-Middleware: authMiddleware, roleMiddleware('business')
-    ↓
-Controller: businessController.getProfile
-    ↓
-Service: businessService.getBusinessProfile
-    ↓
-Step 1: Get user.businessId
-    ↓
-Step 2: Find business by ID
-    ↓
-Step 3: Verify business.ownerId === user._id
-    ↓
-Model: Business.findById()
-    ↓
-Database: businesses collection
-    ↓
-Response: { success: true, data: { business } }
-```
-
-**Files:**
-- Frontend: `src/pages/BusinessDashboard.tsx`
-- API Service: `src/services/api.ts` → `businessAPI.getProfile()`, `businessAPI.getCards()`, `businessAPI.getAnalytics()`
-- Routes: `backend/src/routes/business.routes.js`
-- Controllers: `backend/src/controllers/business.controller.js`
-- Services: `backend/src/services/business.service.js`, `card.service.js`, `analytics.service.js`
+- Frontend: `src/pages/DashboardPage.tsx`
+- API Client: `src/lib/api.ts` → `businessApi.getMyBusiness()`, `getMyCards()`, `analyticsApi.getOverview()`
+- Backend Routes: `backend/routes/business.js`, `backend/routes/analytics.js`
+- Backend Models: `Business.js`, `NfcCard.js`, `ScanEvent.js`
 
 **Data Displayed:**
 - Business name, category, status
-- Card count / card limit
-- Total scans (today/week/month)
-- List of cards with quick stats
+- Total scans, today scans, week scans, unique visitors
+- Card count
 
 ---
 
-### 11. Business - My Cards
+### My Cards
 
-**Frontend:** `src/pages/business/MyCards.tsx`
+**Frontend:** `src/pages/DashboardPage.tsx` (activeTab === 'cards')
 
 **User Action:**
-1. Clicks "My Cards" menu
-2. Page loads card list
+1. Clicks "NFC Cards" tab
+2. Card list loads
 
 **API Call:**
-```javascript
-GET /api/business/cards
+```
+GET /api/businesses/my/cards
 ```
 
 **Backend Flow:**
 ```
-Route: GET /api/business/cards
+DashboardPage.tsx (cards tab)
     ↓
-Middleware: authMiddleware, roleMiddleware('business')
+businessApi.getMyCards()
     ↓
-Controller: businessCardController.list
+GET /api/businesses/my/cards
     ↓
-Service: cardService.getBusinessCards
+business.controller.js → getMyCards()
     ↓
-Step 1: Get user.businessId
+Business.findOne({ owner: req.user._id })
+NfcCard.find({ business: business._id })
     ↓
-Step 2: Find all cards where businessId === user.businessId
+Return cards array
     ↓
-Model: NfcCard.find({ businessId })
-    ↓
-Database: nfccards collection
-    ↓
-Response: { success: true, data: { cards } }
+Render card list
 ```
 
 **Files:**
-- Frontend: `src/pages/business/MyCards.tsx`
-- API Service: `src/services/api.ts` → `businessAPI.getCards()`
-- Route: `backend/src/routes/business.routes.js`
-- Controller: `backend/src/controllers/businessCard.controller.js` → `list()`
-- Service: `backend/src/services/card.service.js` → `getBusinessCards()`
-- Model: `backend/src/models/NfcCard.js`
+- Frontend: `src/pages/DashboardPage.tsx`
+- API Client: `src/lib/api.ts` → `businessApi.getMyCards()`
+- Backend Route: `backend/routes/business.js` → `GET /my/cards`
+- Backend Model: `NfcCard.js`
 
-**Card Display:**
-- Public Card ID (JOCK-A7F92K)
+**Data Displayed:**
+- Card ID (publicCardId)
 - Label
-- Status (active/suspended)
+- Status (active/inactive)
 - Destination URL
-- NFC URL (https://tapreview.com/s/JOCK-A7F92K)
-- QR URL (same as NFC URL)
-- Total scans
-- Actions (edit destination)
+- Total scans, today scans
 
 ---
 
-### 12. Business - Edit Card Destination
+### Edit Card Destination
 
-**Frontend:** `src/pages/business/EditCard.tsx`
+**Frontend:** `src/pages/DashboardPage.tsx` (edit form)
 
 **User Action:**
-1. Clicks "Edit" on card
-2. Changes destination URL
+1. Clicks "Edit URL" on a card
+2. Enters new destination URL
 3. Clicks "Save"
 
 **API Call:**
-```javascript
-PATCH /api/business/cards/:id
-Body: {
-  destinationUrl: "https://g.page/r/joes-restaurant-new",
-  label: "Main Entrance"
-}
+```
+PUT /api/businesses/cards/:cardId/destination
+Body: { destinationUrl }
 ```
 
 **Backend Flow:**
 ```
-Route: PATCH /api/business/cards/:id
+Edit Form Submit
     ↓
-Middleware: authMiddleware, roleMiddleware('business'), validate(updateCardSchema), ownershipMiddleware
+handleUpdateDestination(cardId, newUrl)
     ↓
-Controller: businessCardController.update
+businessApi.updateCardDestination(cardId, newUrl)
     ↓
-Service: cardService.updateCardDestination
+PUT /api/businesses/cards/:cardId/destination
     ↓
-Step 1: Find card by ID
+business.controller.js → updateCardDestination()
     ↓
-Step 2: Verify card.businessId === user.businessId (OWNERSHIP CHECK)
+NfcCard.findOne({ cardId, business: business._id })
     ↓
-Step 3: Validate destinationUrl
+Validate URL (http/https only)
     ↓
-Step 4: Update card
+Update card.destinationUrl
     ↓
-Step 5: Invalidate cache (if using Redis)
+Invalidate cache (if using Redis)
     ↓
-Step 6: Log audit (action: 'destination_changed')
+Return { success: true, data: { card } }
     ↓
-Model: NfcCard.findOneAndUpdate(), AuditLog.create()
+Refresh cards list
     ↓
-Database: nfccards, auditlogs collections
-    ↓
-Response: { success: true, data: { card } }
+Show success message
 ```
 
 **Files:**
-- Frontend: `src/pages/business/EditCard.tsx`
-- API Service: `src/services/api.ts` → `businessAPI.updateCard()`
-- Route: `backend/src/routes/business.routes.js`
-- Controller: `backend/src/controllers/businessCard.controller.js` → `update()`
-- Service: `backend/src/services/card.service.js` → `updateCardDestination()`
-- Models: `NfcCard.js`, `AuditLog.js`
-- Middleware: `backend/src/middleware/ownership.middleware.js`
+- Frontend: `src/pages/DashboardPage.tsx`
+- API Client: `src/lib/api.ts` → `businessApi.updateCardDestination()`
+- Backend Route: `backend/routes/business.js` → `PUT /cards/:cardId/destination`
+- Backend Model: `NfcCard.js`
 
-**CRITICAL SECURITY CHECK:**
-```javascript
-// Ownership verification
-if (card.businessId.toString() !== user.businessId.toString()) {
-  throw new AppError('Forbidden', 403, 'FORBIDDEN');
-}
-```
+**Validation:**
+- Frontend: Basic URL format check
+- Backend: Strict validation (http/https only, no IP addresses, no localhost in production)
 
-**URL Validation:**
-```javascript
-const isValidDestinationUrl = (url) => {
-  try {
-    const parsed = new URL(url);
-    
-    // Only HTTP/HTTPS
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return false;
-    }
-    
-    // No IP addresses
-    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(parsed.hostname)) {
-      return false;
-    }
-    
-    // No localhost in production
-    if (process.env.NODE_ENV === 'production') {
-      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-        return false;
-      }
-    }
-    
-    return true;
-  } catch {
-    return false;
-  }
-};
-```
+**Security:**
+- Ownership verification: Card must belong to business
+- Business must belong to user
+- URL validation prevents malicious redirects
 
 ---
 
-## Public Flow
+## Admin Dashboard Flow
 
-### 13. NFC/QR Redirect
+### Admin Overview
 
-**Frontend:** None (backend only)
+**Frontend:** `src/pages/AdminPage.tsx` (activeSection === 'overview')
 
 **User Action:**
-1. Customer taps NFC card or scans QR
-2. Phone opens URL: `https://tapreview.com/s/JOCK-A7F92K`
+1. Admin logs in
+2. Redirected to /admin
+3. Dashboard loads
+
+**API Calls:**
+```
+GET /api/admin/stats
+GET /api/admin/businesses
+```
 
 **Backend Flow:**
 ```
-Route: GET /s/:publicCardId
+AdminPage.tsx mounts
     ↓
-Middleware: rateLimit (30 req/min), detectBot
+useEffect → fetchData()
     ↓
-Controller: redirectController.redirect
+Promise.all([
+  adminApi.getStats(),
+  adminApi.getBusinesses()
+])
     ↓
-Service: redirectService.processRedirect
+GET /api/admin/stats
+GET /api/admin/businesses
     ↓
-Step 1: Find card by publicCardId (with status: 'active')
+admin.controller.js → getStats()
+admin.controller.js → getBusinesses()
     ↓
-Step 2: If not found → return 404 error page
+Business.countDocuments()
+NfcCard.countDocuments()
+ScanEvent.countDocuments()
+Business.find().populate('owner')
     ↓
-Step 3: Populate business
+Return stats, businesses
     ↓
-Step 4: Check business.status === 'active'
+Set state: stats, businesses
     ↓
-Step 5: If suspended → return 403 error page
-    ↓
-Step 6: Get destinationUrl
-    ↓
-Step 7: Validate destinationUrl (double-check)
-    ↓
-Step 8: Record scan event (ASYNC, non-blocking)
-    ↓
-Step 9: Return 302 redirect to destinationUrl
-    ↓
-Model: NfcCard.findOne({ publicCardId, status: 'active' })
-    ↓
-Database: nfccards collection
-    ↓
-Response: 302 Redirect to destinationUrl
+Render admin dashboard
 ```
 
 **Files:**
-- Route: `backend/src/routes/public.routes.js`
-- Controller: `backend/src/controllers/redirect.controller.js` → `redirect()`
-- Service: `backend/src/services/redirect.service.js` → `processRedirect()`
-- Model: `backend/src/models/NfcCard.js`, `ScanEvent.js`
+- Frontend: `src/pages/AdminPage.tsx`
+- API Client: `src/lib/api.ts` → `adminApi.getStats()`, `getBusinesses()`
+- Backend Routes: `backend/routes/admin.js`
+- Backend Models: `Business.js`, `NfcCard.js`, `ScanEvent.js`
 
-**Performance Optimization:**
-```javascript
-// Use lean() for faster query
-const card = await NfcCard.findOne(
-  { publicCardId, status: 'active' },
-  { destinationUrl: 1, businessId: 1 }
-).lean();
+**Data Displayed:**
+- Total businesses
+- Total cards
+- Total scans
+- Total revenue
+- Business list with owner info
 
-// Populate only needed fields
-await card.populate('business', 'status');
+---
 
-// Record scan asynchronously
-recordScanEvent(card, req).catch(err => {
-  logger.error('Failed to record scan', { error: err.message });
-});
+### Business List
 
-// Redirect immediately
-res.redirect(302, card.destinationUrl);
+**Frontend:** `src/pages/AdminPage.tsx` (activeSection === 'businesses')
+
+**User Action:**
+1. Clicks "Businesses" tab
+2. Business list loads
+3. Can search businesses
+
+**API Call:**
+```
+GET /api/admin/businesses?search=...
 ```
 
-**Error Pages:**
-- 404: "Card not found or inactive"
-- 403: "This card is currently unavailable"
-- 429: "Too many requests, please try again later"
+**Backend Flow:**
+```
+AdminPage.tsx (businesses tab)
+    ↓
+adminApi.getBusinesses({ search })
+    ↓
+GET /api/admin/businesses?search=...
+    ↓
+admin.controller.js → getBusinesses()
+    ↓
+Business.find({ $or: [name regex, slug regex] })
+  .populate('owner', 'username email fullName')
+  .sort({ createdAt: -1 })
+    ↓
+Return businesses array
+    ↓
+Render business table
+```
+
+**Files:**
+- Frontend: `src/pages/AdminPage.tsx`
+- API Client: `src/lib/api.ts` → `adminApi.getBusinesses()`
+- Backend Route: `backend/routes/admin.js` → `GET /businesses`
+- Backend Model: `Business.js`
+
+**Data Displayed:**
+- Business name, slug
+- Owner name, email
+- Category
+- Status (active/suspended)
+
+---
+
+### Create Business
+
+**Frontend:** `src/pages/AdminPage.tsx` (CreateBusinessModal)
+
+**User Action:**
+1. Clicks "New Business" button
+2. Fills form (username, password, email, business name, category)
+3. Clicks "Create Business"
+
+**API Call:**
+```
+POST /api/admin/businesses
+Body: { username, password, email, fullName, businessName, category }
+```
+
+**Backend Flow:**
+```
+CreateBusinessModal Submit
+    ↓
+handleSubmit(formData)
+    ↓
+adminApi.createBusiness(formData)
+    ↓
+POST /api/admin/businesses
+    ↓
+admin.controller.js → createBusiness()
+    ↓
+Check if username/email exists
+    ↓
+User.create({
+  username, password (hashed), email, fullName, role: 'business'
+})
+    ↓
+Business.create({
+  name: businessName, slug (auto-generated), category, owner: user._id
+})
+    ↓
+AuditLog.create({ action: 'business_created', ... })
+    ↓
+Return { success: true, data: { business, credentials } }
+    ↓
+Show credentials modal
+    ↓
+Close modal after 3 seconds
+    ↓
+Refresh business list
+```
+
+**Files:**
+- Frontend: `src/pages/AdminPage.tsx` → `CreateBusinessModal`
+- API Client: `src/lib/api.ts` → `adminApi.createBusiness()`
+- Backend Route: `backend/routes/admin.js` → `POST /businesses`
+- Backend Models: `User.js`, `Business.js`, `AuditLog.js`
+
+**Security:**
+- Admin-only endpoint
+- Password hashed with bcrypt
+- Credentials shown only once
+- Audit log entry created
+
+---
+
+## Public Redirect Flow
+
+### NFC/QR Redirect
+
+**Frontend:** `src/pages/RedirectPage.tsx` (fallback only)
+
+**User Action:**
+1. Customer taps NFC card or scans QR
+2. Phone opens URL: `https://domain.com/s/JOCK-A7F92K`
+
+**Backend Flow (Primary):**
+```
+NFC/QR Tap
+    ↓
+Browser opens: https://domain.com/s/JOCK-A7F92K
+    ↓
+Backend route: GET /s/:publicCardId
+    ↓
+redirect.controller.js → redirect()
+    ↓
+NfcCard.findOne({ publicCardId, status: 'active' })
+    ↓
+Check business.status === 'active'
+    ↓
+Get destinationUrl
+    ↓
+Record scan event (async)
+    ↓
+Return 302 redirect to destinationUrl
+    ↓
+Browser redirects to destination
+```
+
+**Frontend Flow (Fallback):**
+```
+If backend redirect fails:
+    ↓
+RedirectPage.tsx loads
+    ↓
+Show loading state
+    ↓
+Wait 3 seconds
+    ↓
+Navigate to / (homepage)
+```
+
+**Files:**
+- Backend Route: `backend/routes/redirect.js` → `GET /s/:publicCardId`
+- Backend Controller: `backend/controllers/redirect.controller.js`
+- Backend Model: `NfcCard.js`, `ScanEvent.js`
+- Frontend Fallback: `src/pages/RedirectPage.tsx`
+
+**Performance:**
+- Target: <100ms redirect time
+- Cache: In-memory cache (Redis in Phase 5)
+- Async: Scan recording doesn't block redirect
+
+---
+
+## Route Protection Flow
+
+### Protected Routes
+
+**Frontend:** `src/components/ProtectedRoute.tsx`
+
+**Flow:**
+```
+User navigates to /dashboard
+    ↓
+ProtectedRoute checks:
+  - isAuthenticated?
+  - requiredRole === 'business'?
+    ↓
+If not authenticated:
+  → Navigate to /login
+    ↓
+If authenticated but wrong role:
+  → Navigate to appropriate dashboard
+    ↓
+If all checks pass:
+  → Render children (DashboardPage)
+```
+
+**Files:**
+- Frontend: `src/components/ProtectedRoute.tsx`
+- Context: `src/context/AuthContext.tsx`
+
+**Routes Protected:**
+- `/dashboard` → requires 'business' role
+- `/admin` → requires 'admin' role
+
+---
+
+## API Client Architecture
+
+### Centralized API Layer
+
+**File:** `src/lib/api.ts`
+
+**Structure:**
+```typescript
+// Base fetch wrapper
+async function fetchApi<T>(endpoint, options): Promise<T>
+
+// API modules
+export const authApi = {
+  login, logout, getMe
+}
+
+export const businessApi = {
+  getMyBusiness, updateMyBusiness,
+  getMyCards, updateCardDestination
+}
+
+export const adminApi = {
+  getStats, getBusinesses, createBusiness,
+  getCards, createCard, assignCard
+}
+
+export const analyticsApi = {
+  getOverview
+}
+```
+
+**Features:**
+- Centralized error handling
+- Automatic cookie inclusion (`credentials: 'include'`)
+- TypeScript types for all responses
+- Custom ApiError class
+- Network error handling
+
+---
+
+## Authentication State Management
+
+### AuthContext
+
+**File:** `src/context/AuthContext.tsx`
+
+**State:**
+```typescript
+{
+  user: User | null,
+  loading: boolean,
+  isAuthenticated: boolean,
+  isAdmin: boolean,
+  isBusiness: boolean
+}
+```
+
+**Functions:**
+```typescript
+login(username, password): Promise<void>
+logout(): Promise<void>
+checkAuth(): Promise<void>
+```
+
+**Flow:**
+```
+App mounts
+    ↓
+AuthProvider wraps app
+    ↓
+checkAuth() called
+    ↓
+GET /api/auth/me
+    ↓
+If valid cookie:
+  → Set user state
+  → isAuthenticated = true
+    ↓
+If invalid/no cookie:
+  → user = null
+  → isAuthenticated = false
+```
+
+**Usage:**
+```typescript
+const { user, isAuthenticated, isAdmin, login, logout } = useAuth();
+```
 
 ---
 
 ## Summary Table
 
-| # | Frontend Page | API Endpoint | Controller | Service | Model |
-|---|---------------|--------------|------------|---------|-------|
-| 1 | LoginPage | POST /auth/login | auth.login | auth.authenticateUser | User |
-| 2 | (Logout) | POST /auth/logout | auth.logout | - | - |
-| 3 | AdminDashboard | GET /admin/analytics/stats | adminAnalytics.getStats | analytics.getPlatformStats | Business, NfcCard, ScanEvent |
-| 4 | BusinessList | GET /admin/businesses | adminBusiness.list | business.getAllBusinesses | Business |
-| 5 | CreateBusiness | POST /admin/businesses | adminBusiness.create | business.createBusiness | User, Business, AuditLog |
-| 6 | CardList | GET /admin/cards | adminCard.list | card.getAllCards | NfcCard |
-| 7 | CreateCard | POST /admin/cards | adminCard.create | card.createCard | NfcCard, AuditLog |
-| 8 | AssignCard | POST /admin/cards/:id/assign | adminCard.assign | card.assignCard | NfcCard, Business, AuditLog |
-| 9 | (Suspend) | PATCH /admin/businesses/:id/suspend | adminBusiness.suspend | business.suspendBusiness | Business, NfcCard, AuditLog |
-| 10 | BusinessDashboard | GET /business/profile | business.getProfile | business.getBusinessProfile | Business |
-| 11 | MyCards | GET /business/cards | businessCard.list | card.getBusinessCards | NfcCard |
-| 12 | EditCard | PATCH /business/cards/:id | businessCard.update | card.updateCardDestination | NfcCard, AuditLog |
-| 13 | (NFC Tap) | GET /s/:publicCardId | redirect.redirect | redirect.processRedirect | NfcCard, ScanEvent |
+| Page | API Endpoint | Method | Auth | Role | Data |
+|------|--------------|--------|------|------|------|
+| Login | `/api/auth/login` | POST | No | - | Token + User |
+| Logout | `/api/auth/logout` | POST | Yes | - | - |
+| Dashboard Overview | `/api/businesses/my` | GET | Yes | Business | Business |
+| Dashboard Overview | `/api/businesses/my/cards` | GET | Yes | Business | Cards |
+| Dashboard Overview | `/api/analytics/overview` | GET | Yes | Business | Stats |
+| My Cards | `/api/businesses/my/cards` | GET | Yes | Business | Cards |
+| Edit Destination | `/api/businesses/cards/:id/destination` | PUT | Yes | Business | Card |
+| Admin Overview | `/api/admin/stats` | GET | Yes | Admin | Stats |
+| Admin Overview | `/api/admin/businesses` | GET | Yes | Admin | Businesses |
+| Business List | `/api/admin/businesses` | GET | Yes | Admin | Businesses |
+| Create Business | `/api/admin/businesses` | POST | Yes | Admin | Business |
+| NFC Redirect | `/s/:publicCardId` | GET | No | - | Redirect |
+
+---
+
+## Error Handling
+
+### Frontend Error Handling
+
+**API Errors:**
+```typescript
+try {
+  const response = await businessApi.getMyCards();
+  // Handle success
+} catch (err) {
+  if (err instanceof ApiError) {
+    setError(err.message); // Show user-friendly message
+  } else {
+    setError('An unexpected error occurred');
+  }
+}
+```
+
+**Error Types:**
+- `NETWORK_ERROR` - No internet connection
+- `UNAUTHORIZED` - Not logged in
+- `FORBIDDEN` - Wrong role
+- `VALIDATION_ERROR` - Invalid input
+- `NOT_FOUND` - Resource doesn't exist
+- `SERVER_ERROR` - Backend error
+
+### Backend Error Handling
+
+**Error Response Format:**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable message",
+    "details": {}
+  }
+}
+```
+
+**Error Codes:**
+- `INVALID_CREDENTIALS` - Wrong username/password
+- `UNAUTHORIZED` - Not authenticated
+- `FORBIDDEN` - Wrong role/ownership
+- `VALIDATION_ERROR` - Invalid input data
+- `NOT_FOUND` - Resource not found
+- `CARD_NOT_FOUND` - Card doesn't exist
+- `BUSINESS_NOT_FOUND` - Business doesn't exist
+- `INVALID_URL` - Malicious/invalid URL
+
+---
+
+## Security Measures
+
+### Frontend Security
+
+1. **No JWT in localStorage** - Using HttpOnly cookies
+2. **Route protection** - ProtectedRoute component
+3. **Role checking** - Frontend guards (UX only)
+4. **Input validation** - Basic client-side validation
+5. **Error sanitization** - No stack traces shown
+
+### Backend Security
+
+1. **JWT authentication** - Secure token-based auth
+2. **HttpOnly cookies** - Tokens not accessible via JS
+3. **Role middleware** - Enforces admin/business roles
+4. **Ownership verification** - Checks resource ownership
+5. **Input validation** - Joi validation on all inputs
+6. **URL validation** - Prevents malicious redirects
+7. **Rate limiting** - Prevents brute force attacks
+8. **Audit logging** - Tracks all admin actions
 
 ---
 
 ## Next Steps
 
-1. ✅ Review this connection map
-2. ⏳ Implement backend according to this map
-3. ⏳ Update frontend to use real API calls
-4. ⏳ Test each flow end-to-end
-5. ⏳ Update this document as features are added
+1. ✅ API client created
+2. ✅ Auth context implemented
+3. ✅ Login page connected
+4. ✅ Dashboard connected
+5. ✅ Admin panel connected
+6. ✅ Route protection added
+7. ✅ Mock data removed
+8. ⏳ Test all flows end-to-end
+9. ⏳ Add loading states
+10. ⏳ Add error states
+11. ⏳ Add empty states
+12. ⏳ Test on mobile devices
 
 ---
 
 **Document Status:** COMPLETE  
-**Ready for Implementation:** Yes
+**Implementation Status:** Phase 1 Frontend-Backend Integration Complete

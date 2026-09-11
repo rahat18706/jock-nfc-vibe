@@ -1,51 +1,135 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, BarChart3, CreditCard, Settings, LogOut,
-  Wifi, TrendingUp, Globe, Smartphone, Edit3, Check, X,
-  Clock, Copy, Menu, ArrowRight, QrCode, AlertCircle
+  LayoutDashboard, Wifi, Edit3, Check, X, Copy, Menu, LogOut,
+  TrendingUp, Clock, AlertCircle
 } from 'lucide-react';
-import { mockBusiness, mockCards, mockScans } from '../data/mockData';
+import { businessApi, analyticsApi, ApiError } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+
+interface Business {
+  _id: string;
+  name: string;
+  slug: string;
+  category: string;
+  isActive: boolean;
+}
+
+interface Card {
+  _id: string;
+  cardId: string;
+  label: string;
+  destinationUrl: string;
+  isActive: boolean;
+  stats?: {
+    totalScans: number;
+    todayScans: number;
+  };
+}
+
+interface Stats {
+  totalScans: number;
+  todayScans: number;
+  weekScans: number;
+  uniqueVisitors: number;
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<string | null>(null);
   const [newUrl, setNewUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
+  
+  const [business, setBusiness] = useState<Business | null>(null);
+  const [cards, setCards] = useState<Card[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const stats = {
-    totalScans: 12482,
-    todayScans: 47,
-    weekScans: 892,
-    uniqueVisitors: 8291,
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const [businessRes, cardsRes, statsRes] = await Promise.all([
+        businessApi.getMyBusiness(),
+        businessApi.getMyCards(),
+        analyticsApi.getOverview(),
+      ]);
+
+      if (businessRes.success && businessRes.data) {
+        setBusiness(businessRes.data.business);
+      }
+
+      if (cardsRes.success && cardsRes.data) {
+        setCards(cardsRes.data.cards);
+      }
+
+      if (statsRes.success && statsRes.data) {
+        setStats(statsRes.data);
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError('Failed to load dashboard data');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleUpdateDestination = (cardId: string) => {
+  const handleUpdateDestination = async (cardId: string) => {
     if (!newUrl) return;
+    
     try {
       const url = new URL(newUrl);
       if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        alert('Only HTTP and HTTPS URLs are allowed');
+        setError('Only HTTP and HTTPS URLs are allowed');
         return;
       }
     } catch {
-      alert('Please enter a valid URL');
+      setError('Please enter a valid URL');
       return;
     }
 
     setSaving(true);
-    setTimeout(() => {
-      setSuccess('Destination URL updated! NFC card now redirects to new URL instantly.');
-      setEditingCard(null);
-      setNewUrl('');
+    setError('');
+    
+    try {
+      const response = await businessApi.updateCardDestination(cardId, newUrl);
+      
+      if (response.success) {
+        setSuccess('Destination URL updated successfully!');
+        setEditingCard(null);
+        setNewUrl('');
+        
+        const cardsRes = await businessApi.getMyCards();
+        if (cardsRes.success && cardsRes.data) {
+          setCards(cardsRes.data.cards);
+        }
+        
+        setTimeout(() => setSuccess(''), 5000);
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError('Failed to update destination URL');
+      }
+    } finally {
       setSaving(false);
-      setTimeout(() => setSuccess(''), 5000);
-    }, 1000);
+    }
   };
 
   const handleCopy = (text: string, id: string) => {
@@ -54,19 +138,40 @@ export default function DashboardPage() {
     setTimeout(() => setCopied(''), 2000);
   };
 
-  const handleLogout = () => navigate('/login');
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
-  const navItems = [
-    { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
-    { id: 'cards', icon: Wifi, label: 'NFC Cards' },
-    { id: 'analytics', icon: BarChart3, label: 'Analytics' },
-    { id: 'orders', icon: CreditCard, label: 'Orders' },
-    { id: 'settings', icon: Settings, label: 'Settings' },
-  ];
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-ink"></div>
+      </div>
+    );
+  }
+
+  if (error && !business) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-5">
+        <div className="max-w-md text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-ink mb-2">Error Loading Dashboard</h2>
+          <p className="text-stone-500 mb-4">{error}</p>
+          <button
+            onClick={fetchData}
+            className="px-5 py-2.5 bg-ink text-white rounded-xl font-medium hover:bg-ink-light"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#fafaf9] flex">
-      {/* Sidebar - Desktop */}
+      {/* Sidebar */}
       <aside className="hidden lg:flex w-64 flex-col bg-white border-r border-stone-200/50 sticky top-0 h-screen">
         <div className="p-5 border-b border-stone-100">
           <Link to="/" className="flex items-center gap-2.5">
@@ -78,7 +183,10 @@ export default function DashboardPage() {
         </div>
         
         <nav className="flex-1 p-3">
-          {navItems.map((item) => (
+          {[
+            { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
+            { id: 'cards', icon: Wifi, label: 'NFC Cards' },
+          ].map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
@@ -97,45 +205,62 @@ export default function DashboardPage() {
         <div className="p-4 border-t border-stone-100">
           <div className="flex items-center gap-3 mb-3 px-2">
             <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-              <span className="text-xs font-semibold text-accent">A</span>
+              <span className="text-xs font-semibold text-accent">
+                {user?.fullName?.[0] || 'U'}
+              </span>
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-ink truncate">{mockBusiness.name}</p>
-              <p className="text-xs text-stone-400 truncate">owner@{mockBusiness.slug}.com</p>
+              <p className="text-sm font-medium text-ink truncate">
+                {business?.name || 'Business'}
+              </p>
+              <p className="text-xs text-stone-400 truncate">
+                {user?.email || ''}
+              </p>
             </div>
           </div>
-          <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+          >
             <LogOut className="w-4 h-4" />
             Log out
           </button>
         </div>
       </aside>
 
-      {/* Mobile Sidebar Overlay */}
+      {/* Mobile Sidebar */}
       <AnimatePresence>
         {sidebarOpen && (
           <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
             <motion.aside
-              initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
               onClick={(e) => e.stopPropagation()}
               className="absolute left-0 top-0 bottom-0 w-72 bg-white"
             >
               <div className="p-5 border-b border-stone-100 flex items-center justify-between">
                 <span className="font-semibold text-ink">Menu</span>
-                <button onClick={() => setSidebarOpen(false)} className="p-1"><X className="w-5 h-5" /></button>
+                <button onClick={() => setSidebarOpen(false)}>
+                  <X className="w-5 h-5" />
+                </button>
               </div>
               <nav className="p-3">
-                {navItems.map((item) => (
+                {[
+                  { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
+                  { id: 'cards', icon: Wifi, label: 'NFC Cards' },
+                ].map((item) => (
                   <button
                     key={item.id}
                     onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm mb-0.5 transition-all ${
-                      activeTab === item.id ? 'bg-ink text-white font-medium' : 'text-stone-600 hover:bg-stone-50'
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm mb-0.5 ${
+                      activeTab === item.id ? 'bg-ink text-white font-medium' : 'text-stone-600'
                     }`}
                   >
                     <item.icon className="w-4 h-4" />
@@ -152,33 +277,28 @@ export default function DashboardPage() {
       <main className="flex-1 min-w-0">
         {/* Mobile Header */}
         <header className="lg:hidden sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-stone-200/50 px-5 py-3 flex items-center justify-between">
-          <button onClick={() => setSidebarOpen(true)} className="p-2 -ml-2">
+          <button onClick={() => setSidebarOpen(true)}>
             <Menu className="w-5 h-5 text-ink" />
           </button>
           <span className="font-semibold text-ink text-sm">tapreview</span>
           <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-            <span className="text-xs font-semibold text-accent">A</span>
+            <span className="text-xs font-semibold text-accent">
+              {user?.fullName?.[0] || 'U'}
+            </span>
           </div>
         </header>
 
         <div className="p-5 sm:p-8 max-w-6xl mx-auto">
-          {/* Page Header */}
-          <div className="mb-8">
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink">
-              {activeTab === 'overview' && 'Dashboard'}
-              {activeTab === 'cards' && 'NFC Cards'}
-              {activeTab === 'analytics' && 'Analytics'}
-              {activeTab === 'orders' && 'Orders'}
-              {activeTab === 'settings' && 'Settings'}
-            </h1>
-            <p className="text-stone-500 mt-1 text-sm">
-              {activeTab === 'overview' && `Welcome back. Here's what's happening with ${mockBusiness.name}.`}
-              {activeTab === 'cards' && 'Manage your NFC cards and change destination URLs.'}
-              {activeTab === 'analytics' && 'Track scans, visitors, and performance.'}
-              {activeTab === 'orders' && 'View your order history and status.'}
-              {activeTab === 'settings' && 'Manage your business profile.'}
-            </p>
-          </div>
+          {/* Error Banner */}
+          {error && (
+            <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-100 flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+              <p className="text-sm text-red-700">{error}</p>
+              <button onClick={() => setError('')} className="ml-auto">
+                <X className="w-4 h-4 text-red-600" />
+              </button>
+            </div>
+          )}
 
           {/* Success Banner */}
           <AnimatePresence>
@@ -189,368 +309,176 @@ export default function DashboardPage() {
                 exit={{ opacity: 0, y: -10 }}
                 className="mb-6 p-4 rounded-xl bg-green-50 border border-green-100 flex items-center gap-3"
               >
-                <Check className="w-5 h-5 text-green-600 flex-shrink-0" />
-                <p className="text-sm text-green-700 font-medium">{success}</p>
+                <Check className="w-5 h-5 text-green-600" />
+                <p className="text-sm text-green-700">{success}</p>
               </motion.div>
             )}
           </AnimatePresence>
 
           {/* Overview Tab */}
           {activeTab === 'overview' && (
-            <div className="space-y-6">
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                {[
-                  { label: 'Total Scans', value: stats.totalScans.toLocaleString(), icon: BarChart3, trend: '+12%' },
-                  { label: 'Today', value: stats.todayScans, icon: Clock, trend: '+8' },
-                  { label: 'This Week', value: stats.weekScans.toLocaleString(), icon: TrendingUp, trend: '+24%' },
-                  { label: 'Unique Visitors', value: stats.uniqueVisitors.toLocaleString(), icon: Smartphone, trend: '+18%' },
-                ].map((stat, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="premium-card p-4 sm:p-5"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center">
-                        <stat.icon className="w-4 h-4 text-stone-500" />
-                      </div>
-                      <span className="text-xs font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded">{stat.trend}</span>
-                    </div>
-                    <p className="text-xl sm:text-2xl font-semibold text-ink">{stat.value}</p>
-                    <p className="text-xs sm:text-sm text-stone-400 mt-0.5">{stat.label}</p>
-                  </motion.div>
-                ))}
-              </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink mb-2">
+                Dashboard
+              </h1>
+              <p className="text-stone-500 mb-8">
+                Welcome back. Here's what's happening with {business?.name}.
+              </p>
 
-              {/* Quick Actions & Recent Activity */}
-              <div className="grid lg:grid-cols-5 gap-6">
-                {/* Quick URL Change - THE CORE FEATURE */}
-                <div className="lg:col-span-3 premium-card p-5 sm:p-6">
-                  <div className="flex items-center justify-between mb-5">
-                    <div>
-                      <h3 className="font-semibold text-ink">Quick URL Change</h3>
-                      <p className="text-xs text-stone-400 mt-0.5">Update where your NFC card redirects. Takes effect instantly.</p>
+              {/* Stats */}
+              {stats && (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                  {[
+                    { label: 'Total Scans', value: stats.totalScans, icon: TrendingUp },
+                    { label: 'Today', value: stats.todayScans, icon: Clock },
+                    { label: 'This Week', value: stats.weekScans, icon: TrendingUp },
+                    { label: 'Unique Visitors', value: stats.uniqueVisitors, icon: TrendingUp },
+                  ].map((stat, i) => (
+                    <div key={i} className="bg-white rounded-xl border border-stone-200 p-5">
+                      <stat.icon className="w-5 h-5 text-stone-400 mb-3" />
+                      <p className="text-2xl font-semibold text-ink">{stat.value}</p>
+                      <p className="text-sm text-stone-500">{stat.label}</p>
                     </div>
-                    <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                      <Edit3 className="w-4 h-4 text-accent" />
+                  ))}
+                </div>
+              )}
+
+              {/* Quick Actions */}
+              <div className="bg-white rounded-xl border border-stone-200 p-6">
+                <h2 className="text-lg font-semibold text-ink mb-4">Quick Actions</h2>
+                <button
+                  onClick={() => setActiveTab('cards')}
+                  className="w-full flex items-center justify-between p-4 rounded-xl border border-stone-200 hover:border-ink transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <Wifi className="w-5 h-5 text-ink" />
+                    <div className="text-left">
+                      <p className="font-medium text-ink">Manage NFC Cards</p>
+                      <p className="text-sm text-stone-500">View and update card destinations</p>
                     </div>
                   </div>
-                  
-                  {mockCards.slice(0, 2).map((card) => (
-                    <div key={card.id} className="p-4 rounded-xl bg-stone-50 border border-stone-100 mb-3 last:mb-0">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <Wifi className="w-3.5 h-3.5 text-stone-400" />
-                            <span className="text-sm font-medium text-ink">{card.label}</span>
-                            <span className="badge bg-green-50 text-green-700 text-[10px]">Active</span>
+                  <span className="text-stone-400">→</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Cards Tab */}
+          {activeTab === 'cards' && (
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink mb-2">
+                NFC Cards
+              </h1>
+              <p className="text-stone-500 mb-8">
+                Manage your NFC cards and change destination URLs.
+              </p>
+
+              {cards.length === 0 ? (
+                <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
+                  <Wifi className="w-12 h-12 text-stone-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-ink mb-2">No Cards Yet</h3>
+                  <p className="text-stone-500">
+                    Contact admin to get NFC cards assigned to your business.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {cards.map((card) => (
+                    <div key={card._id} className="bg-white rounded-xl border border-stone-200 p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-ink">{card.label}</h3>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              card.isActive 
+                                ? 'bg-green-50 text-green-700' 
+                                : 'bg-red-50 text-red-700'
+                            }`}>
+                              {card.isActive ? 'Active' : 'Inactive'}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs text-stone-400 mb-2">
-                            <Globe className="w-3 h-3" />
-                            <span className="truncate">{card.destinationUrl}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <code className="text-[10px] px-1.5 py-0.5 bg-white rounded border border-stone-200 text-stone-500 font-mono">
-                              /s/{card.cardId}
+                          <div className="flex items-center gap-2 text-sm text-stone-500">
+                            <span>Card ID:</span>
+                            <code className="px-2 py-0.5 bg-stone-100 rounded text-xs">
+                              {card.cardId}
                             </code>
-                            <button 
-                              onClick={() => handleCopy(`tapreview.com/s/${card.cardId}`, card.id)}
-                              className="text-stone-400 hover:text-ink transition-colors"
+                            <button
+                              onClick={() => handleCopy(card.cardId, card._id)}
+                              className="text-stone-400 hover:text-ink"
                             >
-                              {copied === card.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                              {copied === card._id ? (
+                                <Check className="w-3 h-3 text-green-500" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
                             </button>
                           </div>
                         </div>
                         <button
-                          onClick={() => { setEditingCard(card.id); setNewUrl(card.destinationUrl); setActiveTab('cards'); }}
-                          className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-ink bg-white border border-stone-200 rounded-lg hover:border-stone-300 transition-colors"
+                          onClick={() => {
+                            setEditingCard(editingCard === card._id ? null : card._id);
+                            setNewUrl(card.destinationUrl);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-ink bg-stone-100 rounded-lg hover:bg-stone-200"
                         >
-                          Edit
+                          <Edit3 className="w-3.5 h-3.5" />
+                          Edit URL
                         </button>
                       </div>
-                    </div>
-                  ))}
-                </div>
 
-                {/* Recent Activity */}
-                <div className="lg:col-span-2 premium-card p-5 sm:p-6">
-                  <h3 className="font-semibold text-ink mb-4">Recent Activity</h3>
-                  <div className="space-y-3">
-                    {mockScans.slice(0, 5).map((scan, i) => (
-                      <div key={i} className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center flex-shrink-0">
-                          {scan.device === 'mobile' ? <Smartphone className="w-3.5 h-3.5 text-stone-400" /> : <Globe className="w-3.5 h-3.5 text-stone-400" />}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-ink truncate">{scan.cardId} scan</p>
-                          <p className="text-xs text-stone-400">{scan.timestamp} • {scan.os}</p>
-                        </div>
+                      <div className="text-sm text-stone-600 mb-3">
+                        <span className="text-stone-400">Destination: </span>
+                        <span className="break-all">{card.destinationUrl}</span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* Cards Tab - THE CORE FEATURE */}
-          {activeTab === 'cards' && (
-            <div className="space-y-4">
-              {/* Info banner */}
-              <div className="p-4 rounded-xl bg-accent-soft border border-accent/10 flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-ink">How NFC cards work</p>
-                  <p className="text-xs text-stone-500 mt-0.5">
-                    Your physical NFC card always points to <code className="px-1 py-0.5 bg-white rounded text-ink font-mono text-[10px]">tapreview.com/s/[cardId]</code>. 
-                    You can change the destination URL below — the card itself never needs to be replaced.
-                  </p>
-                </div>
-              </div>
+                      {card.stats && (
+                        <div className="flex items-center gap-4 text-xs text-stone-400">
+                          <span>{card.stats.totalScans} total scans</span>
+                          <span>{card.stats.todayScans} today</span>
+                        </div>
+                      )}
 
-              {mockCards.map((card) => (
-                <motion.div
-                  key={card.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="premium-card p-5 sm:p-6"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold text-ink">{card.label}</h3>
-                        <span className={`badge ${card.active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${card.active ? 'bg-green-500' : 'bg-red-500'}`} />
-                          {card.active ? 'Active' : 'Inactive'}
-                        </span>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-stone-400 text-xs w-20 flex-shrink-0">Card ID</span>
-                          <code className="text-xs px-2 py-0.5 bg-stone-100 rounded font-mono text-ink">{card.cardId}</code>
-                          <button 
-                            onClick={() => handleCopy(card.cardId, `id-${card.id}`)}
-                            className="text-stone-400 hover:text-ink transition-colors"
+                      {/* Edit Form */}
+                      <AnimatePresence>
+                        {editingCard === card._id && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-4 pt-4 border-t border-stone-100"
                           >
-                            {copied === `id-${card.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-stone-400 text-xs w-20 flex-shrink-0">NFC URL</span>
-                          <code className="text-xs px-2 py-0.5 bg-stone-100 rounded font-mono text-ink truncate">tapreview.com/s/{card.cardId}</code>
-                          <button 
-                            onClick={() => handleCopy(`tapreview.com/s/${card.cardId}`, `url-${card.id}`)}
-                            className="text-stone-400 hover:text-ink transition-colors"
-                          >
-                            {copied === `url-${card.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-stone-400 text-xs w-20 flex-shrink-0">Destination</span>
-                          <span className="text-xs text-ink truncate">{card.destinationUrl}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4 mt-3 text-xs text-stone-400">
-                        <span>{card.totalScans.toLocaleString()} scans</span>
-                        <span>{Math.round(card.totalScans * 0.66).toLocaleString()} unique</span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => { setEditingCard(editingCard === card.id ? null : card.id); setNewUrl(card.destinationUrl); }}
-                      className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-ink bg-stone-100 rounded-lg hover:bg-stone-200 transition-colors self-start"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      Change URL
-                    </button>
-                  </div>
-
-                  {/* Inline Edit Form */}
-                  <AnimatePresence>
-                    {editingCard === card.id && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="mt-4 pt-4 border-t border-stone-100">
-                          <label className="text-sm font-medium text-ink block mb-2">New Destination URL</label>
-                          <div className="flex flex-col sm:flex-row gap-2">
-                            <input
-                              type="url"
-                              value={newUrl}
-                              onChange={(e) => setNewUrl(e.target.value)}
-                              placeholder="https://g.page/r/your-review-link"
-                              className="input-premium flex-1"
-                            />
+                            <label className="text-sm font-medium text-ink block mb-2">
+                              New Destination URL
+                            </label>
                             <div className="flex gap-2">
+                              <input
+                                type="url"
+                                value={newUrl}
+                                onChange={(e) => setNewUrl(e.target.value)}
+                                placeholder="https://g.page/r/your-review-link"
+                                className="flex-1 px-4 py-2.5 rounded-lg border border-stone-200 focus:border-ink outline-none"
+                              />
                               <button
-                                onClick={() => handleUpdateDestination(card.id)}
+                                onClick={() => handleUpdateDestination(card._id)}
                                 disabled={saving}
-                                className="px-5 py-3 bg-ink text-white text-sm font-medium rounded-xl hover:bg-ink-light disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                                className="px-5 py-2.5 bg-ink text-white rounded-lg font-medium disabled:opacity-50"
                               >
-                                {saving ? (
-                                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                ) : (
-                                  <>Save <ArrowRight className="w-3.5 h-3.5" /></>
-                                )}
+                                {saving ? 'Saving...' : 'Save'}
                               </button>
                               <button
                                 onClick={() => setEditingCard(null)}
-                                className="px-3 py-3 text-stone-400 hover:text-ink rounded-xl hover:bg-stone-100 transition-colors"
+                                className="px-3 py-2.5 text-stone-400 hover:text-ink"
                               >
                                 <X className="w-4 h-4" />
                               </button>
                             </div>
-                          </div>
-                          <p className="mt-2 text-xs text-stone-400 flex items-center gap-1">
-                            <Check className="w-3 h-3 text-green-500" />
-                            Changes take effect instantly. No card replacement needed.
-                          </p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              ))}
-            </div>
-          )}
-
-          {/* Analytics Tab */}
-          {activeTab === 'analytics' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                {[
-                  { label: 'Total Scans', value: '12,482' },
-                  { label: 'This Month', value: '2,847' },
-                  { label: 'Unique Visitors', value: '8,291' },
-                  { label: 'Avg/Day', value: '142' },
-                ].map((stat, i) => (
-                  <div key={i} className="premium-card p-4 sm:p-5">
-                    <p className="text-xl sm:text-2xl font-semibold text-ink">{stat.value}</p>
-                    <p className="text-xs text-stone-400 mt-0.5">{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Chart */}
-              <div className="premium-card p-5 sm:p-6">
-                <h3 className="font-semibold text-ink mb-4">Scans over time</h3>
-                <div className="h-48 sm:h-64 flex items-end gap-1 sm:gap-2">
-                  {[35, 45, 38, 62, 55, 78, 65, 82, 70, 90, 75, 88, 92, 85].map((h, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <div 
-                        className="w-full rounded-t bg-gradient-to-t from-accent to-accent-light transition-all hover:opacity-80"
-                        style={{ height: `${h}%` }}
-                      />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   ))}
                 </div>
-                <div className="flex justify-between mt-3 text-xs text-stone-400">
-                  <span>2 weeks ago</span>
-                  <span>Today</span>
-                </div>
-              </div>
-
-              {/* Device Breakdown */}
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="premium-card p-5">
-                  <h3 className="font-semibold text-ink mb-4">Devices</h3>
-                  <div className="space-y-3">
-                    {[
-                      { label: 'Mobile', value: 78, color: 'bg-accent' },
-                      { label: 'Tablet', value: 12, color: 'bg-blue-500' },
-                      { label: 'Desktop', value: 10, color: 'bg-stone-300' },
-                    ].map((item, i) => (
-                      <div key={i}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-ink">{item.label}</span>
-                          <span className="text-stone-400">{item.value}%</span>
-                        </div>
-                        <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
-                          <div className={`h-full ${item.color} rounded-full`} style={{ width: `${item.value}%` }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="premium-card p-5">
-                  <h3 className="font-semibold text-ink mb-4">Peak Hours</h3>
-                  <div className="grid grid-cols-6 gap-1.5">
-                    {Array.from({ length: 24 }, (_, i) => {
-                      const intensity = Math.random();
-                      return (
-                        <div key={i} className="aspect-square rounded" style={{ backgroundColor: `rgba(232, 93, 58, ${intensity * 0.8 + 0.1})` }} />
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-between mt-2 text-[10px] text-stone-400">
-                    <span>12am</span>
-                    <span>12pm</span>
-                    <span>11pm</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Orders Tab */}
-          {activeTab === 'orders' && (
-            <div className="space-y-4">
-              {[
-                { id: 'TR-847291', product: 'Professional Pack', status: 'delivered', date: 'Dec 15, 2024', total: '$79' },
-                { id: 'TR-623847', product: 'Starter Pack', status: 'shipped', date: 'Jan 3, 2025', total: '$29' },
-              ].map((order, i) => (
-                <div key={i} className="premium-card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-ink text-sm">{order.id}</span>
-                      <span className={`badge text-[10px] ${
-                        order.status === 'delivered' ? 'bg-green-50 text-green-700' : 
-                        order.status === 'shipped' ? 'bg-blue-50 text-blue-700' : 'bg-stone-100 text-stone-600'
-                      }`}>
-                        {order.status}
-                      </span>
-                    </div>
-                    <p className="text-sm text-stone-500">{order.product} • {order.date}</p>
-                  </div>
-                  <span className="font-semibold text-ink">{order.total}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Settings Tab */}
-          {activeTab === 'settings' && (
-            <div className="premium-card p-5 sm:p-6 max-w-2xl">
-              <h3 className="font-semibold text-ink mb-5">Business Profile</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-ink block mb-1.5">Business Name</label>
-                  <input type="text" defaultValue={mockBusiness.name} className="input-premium" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-ink block mb-1.5">Category</label>
-                  <input type="text" defaultValue={mockBusiness.category} className="input-premium" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-ink block mb-1.5">Phone</label>
-                  <input type="text" defaultValue={mockBusiness.phone} className="input-premium" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-ink block mb-1.5">Address</label>
-                  <input type="text" defaultValue={mockBusiness.address} className="input-premium" />
-                </div>
-                <button className="mt-4 px-5 py-2.5 bg-ink text-white text-sm font-medium rounded-xl hover:bg-ink-light transition-colors">
-                  Save Changes
-                </button>
-              </div>
+              )}
             </div>
           )}
         </div>

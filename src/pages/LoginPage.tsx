@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Wifi, ArrowRight, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { ApiError } from '../lib/api';
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -10,23 +12,31 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const from = (location.state as any)?.from?.pathname || '/dashboard';
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    // Simulate authentication
-    setTimeout(() => {
-      if (username.toLowerCase().includes('admin')) {
-        navigate('/admin');
-      } else if (username) {
-        navigate('/dashboard');
+    try {
+      await login(username, password);
+      
+      // Redirect based on role after successful login
+      // The AuthContext will have the user data now
+      navigate(from, { replace: true });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
       } else {
-        setError('Please enter your credentials');
+        setError('An unexpected error occurred. Please try again.');
       }
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   return (
