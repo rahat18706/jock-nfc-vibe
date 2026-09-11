@@ -20,9 +20,11 @@ export default function LandingPage() {
               <a href="#features" className="text-sm text-muted hover:text-foreground transition-colors">Features</a>
               <a href="#how-it-works" className="text-sm text-muted hover:text-foreground transition-colors">How it works</a>
               <Link to="/login" className="text-sm text-muted hover:text-foreground transition-colors">Log in</Link>
-              <Button variant="primary" size="sm">
-                Get Started
-              </Button>
+              <Link to="/order">
+                <Button variant="primary" size="sm">
+                  Get Started
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
@@ -55,12 +57,14 @@ export default function LandingPage() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <Button variant="primary" size="lg">
-                  <span className="flex items-center gap-2">
-                    Get Started
-                    <ArrowRight className="w-4 h-4" />
-                  </span>
-                </Button>
+                <Link to="/order">
+                  <Button variant="primary" size="lg">
+                    <span className="flex items-center gap-2">
+                      Get Started
+                      <ArrowRight className="w-4 h-4" />
+                    </span>
+                  </Button>
+                </Link>
                 <a href="#how-it-works">
                   <Button variant="secondary" size="lg">
                     See How It Works
@@ -235,12 +239,14 @@ export default function LandingPage() {
           <p className="text-lg text-muted mb-10 max-w-2xl mx-auto">
             Join thousands of businesses using TapReview to grow their online presence.
           </p>
-          <Button variant="primary" size="lg">
-            <span className="flex items-center gap-2">
-              Order Your NFC Card
-              <ArrowRight className="w-4 h-4" />
-            </span>
-          </Button>
+          <Link to="/order">
+            <Button variant="primary" size="lg">
+              <span className="flex items-center gap-2">
+                Order Your NFC Card
+                <ArrowRight className="w-4 h-4" />
+              </span>
+            </Button>
+          </Link>
         </div>
       </section>
 
