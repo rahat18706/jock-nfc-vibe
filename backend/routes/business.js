@@ -3,6 +3,8 @@ import Business from '../models/Business.js';
 import NfcCard from '../models/NfcCard.js';
 import { protect, businessOnly } from '../middleware/auth.js';
 import { invalidateCache } from './redirect.js';
+import { validate } from '../middleware/validate.js';
+import { audit } from '../utils/audit.js';
 
 const router = express.Router();
 
@@ -29,7 +31,7 @@ router.get('/my', protect, businessOnly, async (req, res) => {
 // PUT /api/businesses/my
 // Update business details
 // ============================================
-router.put('/my', protect, businessOnly, async (req, res) => {
+router.put('/my', protect, businessOnly, validate('updateBusiness'), async (req, res) => {
   try {
     const allowedFields = ['name', 'description', 'phone', 'website', 'address', 'logo', 'coverImage'];
     const updates = {};
@@ -54,6 +56,27 @@ router.put('/my', protect, businessOnly, async (req, res) => {
   } catch (error) {
     console.error('Update business error:', error);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.put('/my/card-design', protect, businessOnly, validate('updateCardDesign'), async (req, res) => {
+  try {
+    const business = await Business.findOne({ owner: req.user._id });
+    if (!business) return res.status(404).json({ error: 'Business not found' });
+    const previousValues = business.cardDesign?.toObject?.() || business.cardDesign;
+    business.cardDesign = req.body;
+    await business.save();
+    await audit(req, {
+      action: 'design_changed',
+      targetType: 'business',
+      targetId: business._id.toString(),
+      details: { type: 'card_design_changed' },
+      previousValues,
+      newValues: req.body,
+    });
+    res.json({ business, message: 'Card design saved' });
+  } catch (error) {
+    res.status(error.name === 'ValidationError' ? 400 : 500).json({ error: error.message });
   }
 });
 
@@ -85,7 +108,7 @@ router.get('/my/cards', protect, businessOnly, async (req, res) => {
 // This is what business owners use to update where
 // their NFC card redirects to WITHOUT replacing the card
 // ============================================
-router.put('/cards/:cardId/destination', protect, businessOnly, async (req, res) => {
+router.put('/cards/:cardId/destination', protect, businessOnly, validate('updateDestination'), async (req, res) => {
   try {
     const { cardId } = req.params;
     const { destinationUrl } = req.body;
@@ -126,11 +149,19 @@ router.put('/cards/:cardId/destination', protect, businessOnly, async (req, res)
     }
 
     // Update destination URL
+    const previousUrl = card.destinationUrl;
     card.destinationUrl = destinationUrl;
     await card.save();
 
     // CRITICAL: Invalidate redirect cache so new URL takes effect immediately
     invalidateCache(cardId);
+    await audit(req, {
+      action: 'destination_changed',
+      targetType: 'card',
+      targetId: card._id.toString(),
+      previousValues: { destinationUrl: previousUrl },
+      newValues: { destinationUrl },
+    });
 
     res.json({
       message: 'Destination URL updated successfully',
@@ -154,7 +185,7 @@ router.put('/cards/:cardId/destination', protect, businessOnly, async (req, res)
 // PUT /api/businesses/cards/:cardId
 // Update card label/settings
 // ============================================
-router.put('/cards/:cardId', protect, businessOnly, async (req, res) => {
+router.put('/cards/:cardId', protect, businessOnly, validate('updateCard'), async (req, res) => {
   try {
     const { cardId } = req.params;
     const { label, isActive } = req.body;
@@ -169,10 +200,21 @@ router.put('/cards/:cardId', protect, businessOnly, async (req, res) => {
       return res.status(404).json({ error: 'Card not found' });
     }
 
+    const previousActive = card.isActive;
     if (label !== undefined) card.label = label;
     if (isActive !== undefined) card.isActive = isActive;
 
     await card.save();
+
+    if (isActive !== undefined && previousActive !== isActive) {
+      await audit(req, {
+        action: isActive ? 'card_activated' : 'card_deactivated',
+        targetType: 'card',
+        targetId: card._id.toString(),
+        previousValues: { isActive: previousActive },
+        newValues: { isActive },
+      });
+    }
 
     res.json({ card, message: 'Card updated successfully' });
   } catch (error) {

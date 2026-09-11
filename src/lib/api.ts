@@ -21,8 +21,7 @@ export class ApiError extends Error {
 export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
-  message?: string;
-  details?: any;
+  error?: string;
 }
 
 export interface AuthUser {
@@ -56,28 +55,21 @@ async function fetchApi<T = any>(
 
   try {
     const response = await fetch(url, config);
-    const data = await response.json();
-    const normalizedData = data && typeof data === 'object' && !('success' in data) && !('error' in data)
-      ? { success: true, data }
-      : data;
+    const data = await response.json() as ApiResponse<T>;
 
     // Handle error responses
-    if (!response.ok || normalizedData.success === false) {
-      const legacyError = normalizedData.error;
-      const errorMessage = normalizedData.message
-        || (typeof legacyError === 'string' ? legacyError : legacyError?.message)
-        || 'An error occurred';
+    if (!response.ok || data.success === false) {
+      const errorMessage = data.error || 'An error occurred';
       const errorCode = 'UNKNOWN_ERROR';
 
       throw new ApiError(
         errorMessage,
         errorCode,
         response.status,
-        normalizedData.details || (typeof legacyError === 'object' ? legacyError?.details : undefined)
       );
     }
 
-    return normalizedData;
+    return data as T;
   } catch (error) {
     // If it's already an ApiError, rethrow it
     if (error instanceof ApiError) {

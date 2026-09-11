@@ -2,6 +2,9 @@ import express from 'express';
 import crypto from 'crypto';
 import User from '../models/User.js';
 import { generateToken, protect, adminOnly } from '../middleware/auth.js';
+import { validate } from '../middleware/validate.js';
+import { success, failure } from '../utils/response.js';
+import { audit } from '../utils/audit.js';
 
 const router = express.Router();
 
@@ -10,8 +13,7 @@ const sendSuccess = (res, payload = {}, status = 200) => {
 };
 
 const sendError = (res, message, status = 400, details = null) => {
-  const body = { success: false, message };
-  if (details) body.details = details;
+  const body = { success: false, error: message };
   return res.status(status).json(body);
 };
 
@@ -19,12 +21,12 @@ const sendError = (res, message, status = 400, details = null) => {
 // POST /api/auth/login
 // Business owner logs in with admin-set credentials
 // ============================================
-router.post('/login', async (req, res) => {
+router.post('/login', validate('login'), async (req, res) => {
   try {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return sendError(res, 'Username and password are required', 400);
+      return failure(res, 'Username and password are required', 400);
     }
 
     // Find user by username (admin-set)
@@ -33,18 +35,18 @@ router.post('/login', async (req, res) => {
     });
 
     if (!user) {
-      return sendError(res, 'Invalid credentials', 401);
+      return failure(res, 'Invalid credentials', 401);
     }
 
     // Check if account is active
     if (!user.isActive) {
-      return sendError(res, 'Account has been deactivated. Contact admin.', 403);
+      return failure(res, 'Account has been deactivated. Contact admin.', 403);
     }
 
     // Verify password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return sendError(res, 'Invalid credentials', 401);
+      return failure(res, 'Invalid credentials', 401);
     }
 
     // Update last login
@@ -62,16 +64,15 @@ router.post('/login', async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    return sendSuccess(res, {
-      data: {
+    await audit(req, { action: 'user_login', targetType: 'user', targetId: user._id.toString() });
+    return success(res, {
         message: 'Login successful',
         token,
         user: user.toJSON(),
-      }
     });
   } catch (error) {
     console.error('Login error:', error);
-    return sendError(res, 'Server error during login', 500);
+    return failure(res, 'Server error during login', 500);
   }
 });
 
@@ -80,7 +81,7 @@ router.post('/login', async (req, res) => {
 // Admin creates new business account
 // (Only admin can create accounts)
 // ============================================
-router.post('/register', protect, adminOnly, async (req, res) => {
+router.post('/register', protect, adminOnly, validate('register'), async (req, res) => {
   try {
     const { username, password, email, fullName, businessName, category } = req.body;
 
@@ -121,19 +122,17 @@ router.post('/register', protect, adminOnly, async (req, res) => {
       });
     }
 
-    return sendSuccess(res, {
-      status: 201,
-      data: {
+    await audit(req, { action: 'user_created', targetType: 'user', targetId: user._id.toString() });
+    return success(res, {
         message: 'Business account created successfully',
         user: user.toJSON(),
-      }
     }, 201);
   } catch (error) {
     console.error('Register error:', error);
     if (error.code === 11000) {
       return sendError(res, 'Username or email already exists', 400);
     }
-    return sendError(res, 'Server error during registration', 500);
+    return failure(res, 'Server error during registration', 500);
   }
 });
 
@@ -142,7 +141,7 @@ router.post('/register', protect, adminOnly, async (req, res) => {
 // ============================================
 router.post('/logout', (req, res) => {
   res.clearCookie('token');
-  return sendSuccess(res, { data: { message: 'Logged out successfully' } });
+  return success(res, { message: 'Logged out successfully' });
 });
 
 // ============================================
@@ -150,20 +149,20 @@ router.post('/logout', (req, res) => {
 // Get current user profile
 // ============================================
 router.get('/me', protect, async (req, res) => {
-  return sendSuccess(res, { data: { user: req.user.toJSON() } });
+  return success(res, { user: req.user.toJSON() });
 });
 
 // ============================================
 // POST /api/auth/forgot-password
 // Admin initiates password reset for business
 // ============================================
-router.post('/forgot-password', protect, adminOnly, async (req, res) => {
+router.post('/forgot-password', protect, adminOnly, validate('forgotPassword'), async (req, res) => {
   try {
     const { username } = req.body;
 
     const user = await User.findOne({ username: username.toLowerCase() });
     if (!user) {
-      return sendError(res, 'User not found', 404);
+      return failure(res, 'User not found', 404);
     }
 
     // Generate reset token
@@ -174,15 +173,14 @@ router.post('/forgot-password', protect, adminOnly, async (req, res) => {
 
     // In production: send email with reset link
     // For now, return token (admin would share with business owner)
-    return sendSuccess(res, {
-      data: {
+    await audit(req, { action: 'password_reset_requested', targetType: 'user', targetId: user._id.toString() });
+    return success(res, {
         message: 'Password reset initiated',
         resetToken,
-      }
     });
   } catch (error) {
     console.error('Forgot password error:', error);
-    return sendError(res, 'Server error', 500);
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -190,16 +188,16 @@ router.post('/forgot-password', protect, adminOnly, async (req, res) => {
 // POST /api/auth/reset-password
 // Business owner resets password with token
 // ============================================
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', validate('resetPassword'), async (req, res) => {
   try {
     const { token, newPassword } = req.body;
 
     if (!token || !newPassword) {
-      return sendError(res, 'Token and new password are required', 400);
+      return failure(res, 'Token and new password are required', 400);
     }
 
     if (newPassword.length < 6) {
-      return sendError(res, 'Password must be at least 6 characters', 400);
+      return failure(res, 'Password must be at least 6 characters', 400);
     }
 
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
@@ -210,7 +208,7 @@ router.post('/reset-password', async (req, res) => {
     });
 
     if (!user) {
-      return sendError(res, 'Invalid or expired reset token', 400);
+      return failure(res, 'Invalid or expired reset token', 400);
     }
 
     user.password = newPassword;
@@ -218,10 +216,10 @@ router.post('/reset-password', async (req, res) => {
     user.passwordResetExpires = undefined;
     await user.save();
 
-    return sendSuccess(res, { data: { message: 'Password reset successful' } });
+    return success(res, { message: 'Password reset successful' });
   } catch (error) {
     console.error('Reset password error:', error);
-    return sendError(res, 'Server error', 500);
+    return failure(res, 'Server error', 500);
   }
 });
 
@@ -229,32 +227,33 @@ router.post('/reset-password', async (req, res) => {
 // PUT /api/auth/change-password
 // Business owner changes their own password
 // ============================================
-router.put('/change-password', protect, async (req, res) => {
+router.put('/change-password', protect, validate('changePassword'), async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return sendError(res, 'Current and new password are required', 400);
+      return failure(res, 'Current and new password are required', 400);
     }
 
     if (newPassword.length < 6) {
-      return sendError(res, 'New password must be at least 6 characters', 400);
+      return failure(res, 'New password must be at least 6 characters', 400);
     }
 
     const user = await User.findById(req.user._id);
     const isMatch = await user.comparePassword(currentPassword);
 
     if (!isMatch) {
-      return sendError(res, 'Current password is incorrect', 400);
+      return failure(res, 'Current password is incorrect', 400);
     }
 
     user.password = newPassword;
     await user.save();
 
-    return sendSuccess(res, { data: { message: 'Password changed successfully' } });
+    await audit(req, { action: 'password_changed', targetType: 'user', targetId: user._id.toString() });
+    return success(res, { message: 'Password changed successfully' });
   } catch (error) {
     console.error('Change password error:', error);
-    return sendError(res, 'Server error', 500);
+    return failure(res, 'Server error', 500);
   }
 });
 

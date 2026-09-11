@@ -5,6 +5,8 @@ import NfcCard from '../models/NfcCard.js';
 import { Order, Product } from '../models/Order.js';
 import ScanEvent from '../models/ScanEvent.js';
 import { protect, adminOnly } from '../middleware/auth.js';
+import { validate } from '../middleware/validate.js';
+import { audit } from '../utils/audit.js';
 
 const router = express.Router();
 
@@ -113,7 +115,7 @@ router.get('/businesses', async (req, res) => {
 });
 
 // POST /api/admin/businesses - Admin creates new business + account
-router.post('/businesses', async (req, res) => {
+router.post('/businesses', validate('createBusiness'), async (req, res) => {
   let user;
 
   try {
@@ -165,6 +167,13 @@ router.post('/businesses', async (req, res) => {
       owner: user._id,
     });
 
+    await audit(req, {
+      action: 'business_created',
+      targetType: 'business',
+      targetId: business._id.toString(),
+      newValues: { name: business.name, slug: business.slug, owner: business.owner },
+    });
+
     res.status(201).json({
       success: true,
       data: {
@@ -193,7 +202,7 @@ router.post('/businesses', async (req, res) => {
 });
 
 // PUT /api/admin/businesses/:id - Update business
-router.put('/businesses/:id', async (req, res) => {
+router.put('/businesses/:id', validate('updateBusinessAdmin'), async (req, res) => {
   try {
     const { isActive, isSuspended, suspendedReason, plan } = req.body;
     
@@ -204,6 +213,7 @@ router.put('/businesses/:id', async (req, res) => {
     );
 
     if (!business) return res.status(404).json({ error: 'Business not found' });
+    await audit(req, { action: isSuspended ? 'business_suspended' : isActive === false ? 'business_suspended' : 'business_updated', targetType: 'business', targetId: business._id.toString(), newValues: req.body });
     res.json({ business, message: 'Business updated' });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
@@ -211,7 +221,7 @@ router.put('/businesses/:id', async (req, res) => {
 });
 
 // PUT /api/admin/businesses/:id/card-design - Save printable card design
-router.put('/businesses/:id/card-design', async (req, res) => {
+router.put('/businesses/:id/card-design', validate('updateCardDesign'), async (req, res) => {
   try {
     const { title, subtitle, colors } = req.body;
     const business = await Business.findByIdAndUpdate(
@@ -221,6 +231,7 @@ router.put('/businesses/:id/card-design', async (req, res) => {
     );
 
     if (!business) return res.status(404).json({ error: 'Business not found' });
+    await audit(req, { action: 'design_changed', targetType: 'business', targetId: business._id.toString(), newValues: req.body });
     res.json({ business, message: 'Card design saved' });
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -266,7 +277,7 @@ router.get('/cards', async (req, res) => {
 });
 
 // POST /api/admin/cards - Admin creates/assigns NFC card
-router.post('/cards', async (req, res) => {
+router.post('/cards', validate('createCard'), async (req, res) => {
   try {
     const { cardId, businessId, destinationUrl, label } = req.body;
 
@@ -280,6 +291,8 @@ router.post('/cards', async (req, res) => {
       label,
     });
 
+    await audit(req, { action: 'card_created', targetType: 'card', targetId: card._id.toString(), newValues: { cardId, business: business._id, label } });
+
     res.status(201).json({ card, message: 'Card created and assigned' });
   } catch (error) {
     if (error.code === 11000) {
@@ -290,15 +303,15 @@ router.post('/cards', async (req, res) => {
 });
 
 // PUT /api/admin/cards/:id - Admin updates card
-router.put('/cards/:id', async (req, res) => {
+router.put('/cards/:id', validate('updateAdminCard'), async (req, res) => {
   try {
     const { isActive, destinationUrl, label } = req.body;
-    const card = await NfcCard.findByIdAndUpdate(
-      req.params.id,
-      { $set: { isActive, destinationUrl, label } },
-      { new: true }
-    );
+    const previousCard = await NfcCard.findById(req.params.id);
+    if (!previousCard) return res.status(404).json({ error: 'Card not found' });
+    const card = await NfcCard.findByIdAndUpdate(req.params.id, { $set: { isActive, destinationUrl, label } }, { new: true, runValidators: true });
     if (!card) return res.status(404).json({ error: 'Card not found' });
+    if (destinationUrl && destinationUrl !== previousCard.destinationUrl) await audit(req, { action: 'destination_changed', targetType: 'card', targetId: card._id.toString(), previousValues: { destinationUrl: previousCard.destinationUrl }, newValues: { destinationUrl } });
+    if (isActive !== undefined && isActive !== previousCard.isActive) await audit(req, { action: isActive ? 'card_activated' : 'card_deactivated', targetType: 'card', targetId: card._id.toString(), previousValues: { isActive: previousCard.isActive }, newValues: { isActive } });
     res.json({ card });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
@@ -328,7 +341,7 @@ router.get('/orders', async (req, res) => {
   }
 });
 
-router.put('/orders/:id/status', async (req, res) => {
+router.put('/orders/:id/status', validate('updateOrderStatus'), async (req, res) => {
   try {
     const { status, trackingNumber, trackingUrl, adminNotes } = req.body;
     const allowedStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
@@ -345,8 +358,11 @@ router.put('/orders/:id/status', async (req, res) => {
     order.adminNotes = adminNotes;
     await order.save();
 
+    if (status === 'processing') await audit(req, { action: 'order_approved', targetType: 'order', targetId: order._id.toString(), newValues: { status } });
+
     if (status === 'delivered') {
       await provisionOrderCards(order);
+      await audit(req, { action: 'order_delivered', targetType: 'order', targetId: order._id.toString(), newValues: { status } });
     }
 
     res.json({ order, message: 'Order status updated' });
@@ -370,7 +386,7 @@ router.get('/users', async (req, res) => {
   }
 });
 
-router.put('/users/:id', async (req, res) => {
+router.put('/users/:id', validate('updateUser'), async (req, res) => {
   try {
     const { isActive, role } = req.body;
     const user = await User.findByIdAndUpdate(

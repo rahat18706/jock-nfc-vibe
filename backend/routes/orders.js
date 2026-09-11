@@ -2,6 +2,7 @@ import express from 'express';
 import { Order, Product } from '../models/Order.js';
 import Business from '../models/Business.js';
 import { protect } from '../middleware/auth.js';
+import { validate } from '../middleware/validate.js';
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ router.get('/products', async (req, res) => {
 });
 
 // POST /api/orders - Create new order
-router.post('/', protect, async (req, res) => {
+router.post('/', protect, validate('createOrder'), async (req, res) => {
   try {
     const { items, shippingAddress, discountCode } = req.body;
 
@@ -97,10 +98,11 @@ router.get('/:id', protect, async (req, res) => {
   try {
     const order = await Order.findOne({
       _id: req.params.id,
-      $or: [
-        { customer: req.user._id },
-        { $where: req.user.role === 'admin' }, // Admin can see all
-      ],
+      ...(req.user.role === 'admin'
+        ? {}
+        : req.user.role === 'business'
+          ? { business: (await Business.findOne({ owner: req.user._id }).select('_id'))?._id }
+          : { customer: req.user._id }),
     }).populate('items.product');
 
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -111,7 +113,7 @@ router.get('/:id', protect, async (req, res) => {
 });
 
 // POST /api/orders/:id/payment - Simulate payment
-router.post('/:id/payment', protect, async (req, res) => {
+router.post('/:id/payment', protect, validate('payment'), async (req, res) => {
   try {
     const { method, transactionId } = req.body;
     

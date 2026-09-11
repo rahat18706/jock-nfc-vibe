@@ -461,7 +461,7 @@ export default function DashboardPage() {
                       totalScans={card.stats?.totalScans}
                       todayScans={card.stats?.todayScans}
                       onEdit={() => {
-                        setEditingCard(card._id);
+                        setEditingCard(card.cardId);
                         setNewUrl(card.destinationUrl);
                       }}
                     />

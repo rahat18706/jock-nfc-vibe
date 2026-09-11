@@ -69,6 +69,25 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
+// Normalize every route response at the boundary so legacy handlers cannot
+// leak mixed response shapes to clients.
+app.use((req, res, next) => {
+  const sendJson = res.json.bind(res);
+  res.json = (body) => {
+    if (body && body.success === false) {
+      return sendJson({ success: false, error: body.error || body.message || 'Request failed' });
+    }
+    if (body && typeof body.success === 'boolean') {
+      return sendJson(body);
+    }
+    if (body && typeof body.error === 'string') {
+      return sendJson({ success: false, error: body.error });
+    }
+    return sendJson({ success: true, data: body });
+  };
+  next();
+});
+
 // ============================================
 // LOGGING MIDDLEWARE
 // ============================================
