@@ -1,55 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Wifi, ExternalLink, Star } from 'lucide-react';
-import { mockCards } from '../data/mockData';
+import { Wifi, Star } from 'lucide-react';
 
 export default function RedirectPage() {
-  const { cardId } = useParams();
+  const { slug } = useParams();
   const navigate = useNavigate();
-  const [countdown, setCountdown] = useState(3);
-  
-  const card = mockCards.find(c => c.cardId === cardId);
 
   useEffect(() => {
-    if (card?.active && card?.destinationUrl) {
-      const timer = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            // In production, this would redirect to the actual URL
-            // window.location.href = card.destinationUrl;
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [card]);
+    // The backend handles the redirect at /s/:slug
+    // This page is just a fallback in case the backend redirect doesn't work
+    // In production, the backend will return a 302 redirect before this page loads
+    
+    // Show a loading state briefly, then redirect to homepage if backend didn't redirect
+    const timer = setTimeout(() => {
+      // If we're still here after 3 seconds, something went wrong
+      // Redirect to homepage
+      navigate('/');
+    }, 3000);
 
-  if (!card) {
-    return (
-      <div className="min-h-screen bg-[#fafaf9] flex items-center justify-center p-5">
-        <div className="text-center max-w-sm">
-          <div className="w-14 h-14 rounded-2xl bg-stone-100 flex items-center justify-center mx-auto mb-4">
-            <Wifi className="w-6 h-6 text-stone-400" />
-          </div>
-          <h1 className="text-xl font-semibold text-ink mb-2">Card not found</h1>
-          <p className="text-stone-500 text-sm mb-6">
-            This NFC card doesn't exist or has been deactivated.
-          </p>
-          <button 
-            onClick={() => navigate('/')}
-            className="px-5 py-2.5 bg-ink text-white text-sm font-medium rounded-xl hover:bg-ink-light transition-colors"
-          >
-            Go to homepage
-          </button>
-        </div>
-      </div>
-    );
-  }
+    return () => clearTimeout(timer);
+  }, [slug, navigate]);
 
+  // This page should rarely be seen because the backend handles redirects
+  // It's just a fallback/error page
   return (
     <div className="min-h-screen bg-ink flex items-center justify-center p-5 relative overflow-hidden">
       {/* Background */}
@@ -78,10 +52,10 @@ export default function RedirectPage() {
           Redirecting...
         </h1>
         <p className="text-white/50 text-sm mb-6">
-          Taking you to leave a review for
+          Please wait while we redirect you
         </p>
 
-        {/* Business Card */}
+        {/* Loading indicator */}
         <div className="p-4 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 mb-6">
           <div className="flex items-center gap-1 mb-2 justify-center">
             {[...Array(5)].map((_, i) => (
@@ -89,30 +63,14 @@ export default function RedirectPage() {
             ))}
           </div>
           <p className="text-white font-medium">Leave a review</p>
-          <p className="text-white/40 text-xs mt-1">for {card.label}</p>
+          <p className="text-white/40 text-xs mt-1">for our business</p>
         </div>
 
-        {/* Countdown */}
-        {countdown > 0 ? (
-          <div className="flex items-center justify-center gap-2 text-white/40 text-sm">
-            <div className="w-5 h-5 rounded-full border border-white/20 flex items-center justify-center text-xs">
-              {countdown}
-            </div>
-            <span>Redirecting...</span>
-          </div>
-        ) : (
-          <a 
-            href={card.destinationUrl}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-ink text-sm font-medium rounded-xl hover:bg-white/90 transition-colors"
-          >
-            Continue <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        )}
-
-        {/* Powered by */}
-        <p className="mt-8 text-white/20 text-xs">
-          Powered by tapreview
-        </p>
+        {/* Loading spinner */}
+        <div className="flex items-center justify-center gap-2 text-white/40 text-sm">
+          <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+          <span>Processing...</span>
+        </div>
       </motion.div>
     </div>
   );
