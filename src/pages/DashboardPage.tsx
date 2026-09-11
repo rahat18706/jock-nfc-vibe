@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, Wifi, Edit3, Check, X, Copy, Menu, LogOut,
-  TrendingUp, Clock, AlertCircle
+  LayoutDashboard, Wifi, Edit3, Check, X, Menu, LogOut,
+  TrendingUp, Clock, AlertCircle, Copy, ExternalLink
 } from 'lucide-react';
 import { businessApi, analyticsApi, ApiError } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { Button, Input, Card, Badge, StatusDot, NFCCard, LoadingState, ErrorState, EmptyState, Modal } from '../components/ui';
 
 interface Business {
   _id: string;
@@ -16,7 +17,7 @@ interface Business {
   isActive: boolean;
 }
 
-interface Card {
+interface CardType {
   _id: string;
   cardId: string;
   label: string;
@@ -45,10 +46,9 @@ export default function DashboardPage() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState('');
   
   const [business, setBusiness] = useState<Business | null>(null);
-  const [cards, setCards] = useState<Card[]>([]);
+  const [cards, setCards] = useState<CardType[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -110,7 +110,7 @@ export default function DashboardPage() {
       const response = await businessApi.updateCardDestination(cardId, newUrl);
       
       if (response.success) {
-        setSuccess('Destination URL updated successfully!');
+        setSuccess('Destination updated successfully');
         setEditingCard(null);
         setNewUrl('');
         
@@ -119,23 +119,17 @@ export default function DashboardPage() {
           setCards(cardsRes.data.cards);
         }
         
-        setTimeout(() => setSuccess(''), 5000);
+        setTimeout(() => setSuccess(''), 3000);
       }
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError('Failed to update destination URL');
+        setError('Failed to update destination');
       }
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(''), 2000);
   };
 
   const handleLogout = async () => {
@@ -144,56 +138,38 @@ export default function DashboardPage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-ink"></div>
-      </div>
-    );
+    return <LoadingState message="Loading your dashboard..." />;
   }
 
   if (error && !business) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-5">
-        <div className="max-w-md text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-ink mb-2">Error Loading Dashboard</h2>
-          <p className="text-stone-500 mb-4">{error}</p>
-          <button
-            onClick={fetchData}
-            className="px-5 py-2.5 bg-ink text-white rounded-xl font-medium hover:bg-ink-light"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
+    return <ErrorState message={error} onRetry={fetchData} />;
   }
 
   return (
-    <div className="min-h-screen bg-[#fafaf9] flex">
+    <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
-      <aside className="hidden lg:flex w-64 flex-col bg-white border-r border-stone-200/50 sticky top-0 h-screen">
-        <div className="p-5 border-b border-stone-100">
+      <aside className="hidden lg:flex w-64 flex-col bg-card border-r border-border sticky top-0 h-screen">
+        <div className="p-5 border-b border-border">
           <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-ink flex items-center justify-center">
-              <Wifi className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center">
+              <Wifi className="w-4 h-4 text-accent" />
             </div>
-            <span className="font-semibold text-ink">tapreview</span>
+            <span className="font-semibold text-foreground">TapReview</span>
           </Link>
         </div>
         
         <nav className="flex-1 p-3">
           {[
             { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
-            { id: 'cards', icon: Wifi, label: 'NFC Cards' },
+            { id: 'cards', icon: Wifi, label: 'My Cards' },
           ].map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm mb-0.5 transition-all ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm mb-1 transition-all ${
                 activeTab === item.id 
-                  ? 'bg-ink text-white font-medium' 
-                  : 'text-stone-500 hover:bg-stone-50 hover:text-ink'
+                  ? 'bg-accent/10 text-accent font-medium border border-accent/20' 
+                  : 'text-muted hover:bg-card-hover hover:text-foreground'
               }`}
             >
               <item.icon className="w-4 h-4" />
@@ -202,25 +178,25 @@ export default function DashboardPage() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-stone-100">
+        <div className="p-4 border-t border-border">
           <div className="flex items-center gap-3 mb-3 px-2">
-            <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
               <span className="text-xs font-semibold text-accent">
                 {user?.fullName?.[0] || 'U'}
               </span>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-ink truncate">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground truncate">
                 {business?.name || 'Business'}
               </p>
-              <p className="text-xs text-stone-400 truncate">
+              <p className="text-xs text-muted truncate">
                 {user?.email || ''}
               </p>
             </div>
           </div>
           <button 
             onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-error rounded-lg hover:bg-card-hover transition-colors"
           >
             <LogOut className="w-4 h-4" />
             Log out
@@ -235,7 +211,7 @@ export default function DashboardPage() {
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm lg:hidden"
+            className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
             <motion.aside
@@ -243,24 +219,24 @@ export default function DashboardPage() {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               onClick={(e) => e.stopPropagation()}
-              className="absolute left-0 top-0 bottom-0 w-72 bg-white"
+              className="absolute left-0 top-0 bottom-0 w-72 bg-card border-r border-border"
             >
-              <div className="p-5 border-b border-stone-100 flex items-center justify-between">
-                <span className="font-semibold text-ink">Menu</span>
+              <div className="p-5 border-b border-border flex items-center justify-between">
+                <span className="font-semibold text-foreground">Menu</span>
                 <button onClick={() => setSidebarOpen(false)}>
-                  <X className="w-5 h-5" />
+                  <X className="w-5 h-5 text-muted" />
                 </button>
               </div>
               <nav className="p-3">
                 {[
                   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
-                  { id: 'cards', icon: Wifi, label: 'NFC Cards' },
+                  { id: 'cards', icon: Wifi, label: 'My Cards' },
                 ].map((item) => (
                   <button
                     key={item.id}
                     onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm mb-0.5 ${
-                      activeTab === item.id ? 'bg-ink text-white font-medium' : 'text-stone-600'
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm mb-1 ${
+                      activeTab === item.id ? 'bg-accent/10 text-accent font-medium' : 'text-muted'
                     }`}
                   >
                     <item.icon className="w-4 h-4" />
@@ -276,12 +252,12 @@ export default function DashboardPage() {
       {/* Main Content */}
       <main className="flex-1 min-w-0">
         {/* Mobile Header */}
-        <header className="lg:hidden sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-stone-200/50 px-5 py-3 flex items-center justify-between">
+        <header className="lg:hidden sticky top-0 z-30 bg-card/80 backdrop-blur-xl border-b border-border px-5 py-3 flex items-center justify-between">
           <button onClick={() => setSidebarOpen(true)}>
-            <Menu className="w-5 h-5 text-ink" />
+            <Menu className="w-5 h-5 text-foreground" />
           </button>
-          <span className="font-semibold text-ink text-sm">tapreview</span>
-          <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+          <span className="font-semibold text-foreground text-sm">TapReview</span>
+          <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
             <span className="text-xs font-semibold text-accent">
               {user?.fullName?.[0] || 'U'}
             </span>
@@ -289,17 +265,6 @@ export default function DashboardPage() {
         </header>
 
         <div className="p-5 sm:p-8 max-w-6xl mx-auto">
-          {/* Error Banner */}
-          {error && (
-            <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-100 flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-              <p className="text-sm text-red-700">{error}</p>
-              <button onClick={() => setError('')} className="ml-auto">
-                <X className="w-4 h-4 text-red-600" />
-              </button>
-            </div>
-          )}
-
           {/* Success Banner */}
           <AnimatePresence>
             {success && (
@@ -307,23 +272,38 @@ export default function DashboardPage() {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="mb-6 p-4 rounded-xl bg-green-50 border border-green-100 flex items-center gap-3"
+                className="mb-6 p-4 rounded-xl bg-success/10 border border-success/20 flex items-center gap-3"
               >
-                <Check className="w-5 h-5 text-green-600" />
-                <p className="text-sm text-green-700">{success}</p>
+                <Check className="w-5 h-5 text-success" />
+                <p className="text-sm text-success">{success}</p>
               </motion.div>
             )}
           </AnimatePresence>
 
+          {/* Error Banner */}
+          {error && business && (
+            <div className="mb-6 p-4 rounded-xl bg-error/10 border border-error/20 flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-error" />
+              <p className="text-sm text-error flex-1">{error}</p>
+              <button onClick={() => setError('')}>
+                <X className="w-4 h-4 text-error" />
+              </button>
+            </div>
+          )}
+
           {/* Overview Tab */}
           {activeTab === 'overview' && (
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink mb-2">
-                Dashboard
-              </h1>
-              <p className="text-stone-500 mb-8">
-                Welcome back. Here's what's happening with {business?.name}.
-              </p>
+            <div className="animate-fade-in">
+              <div className="mb-8">
+                <p className="text-sm text-muted mb-2">Good morning</p>
+                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground mb-2">
+                  {business?.name}
+                </h1>
+                <Badge variant={business?.isActive ? 'success' : 'error'}>
+                  <StatusDot status={business?.isActive ? 'active' : 'suspended'} />
+                  {business?.isActive ? 'Active' : 'Suspended'}
+                </Badge>
+              </div>
 
               {/* Stats */}
               {stats && (
@@ -334,148 +314,69 @@ export default function DashboardPage() {
                     { label: 'This Week', value: stats.weekScans, icon: TrendingUp },
                     { label: 'Unique Visitors', value: stats.uniqueVisitors, icon: TrendingUp },
                   ].map((stat, i) => (
-                    <div key={i} className="bg-white rounded-xl border border-stone-200 p-5">
-                      <stat.icon className="w-5 h-5 text-stone-400 mb-3" />
-                      <p className="text-2xl font-semibold text-ink">{stat.value}</p>
-                      <p className="text-sm text-stone-500">{stat.label}</p>
-                    </div>
+                    <Card key={i} className="p-5">
+                      <stat.icon className="w-5 h-5 text-accent mb-3" />
+                      <p className="text-2xl font-bold text-foreground">{stat.value.toLocaleString()}</p>
+                      <p className="text-sm text-muted">{stat.label}</p>
+                    </Card>
                   ))}
                 </div>
               )}
 
               {/* Quick Actions */}
-              <div className="bg-white rounded-xl border border-stone-200 p-6">
-                <h2 className="text-lg font-semibold text-ink mb-4">Quick Actions</h2>
+              <Card className="p-6">
+                <h2 className="text-lg font-semibold text-foreground mb-4">Your Cards</h2>
                 <button
                   onClick={() => setActiveTab('cards')}
-                  className="w-full flex items-center justify-between p-4 rounded-xl border border-stone-200 hover:border-ink transition-colors"
+                  className="w-full flex items-center justify-between p-4 rounded-xl border border-border hover:border-accent/30 hover:bg-card-hover transition-all group"
                 >
                   <div className="flex items-center gap-3">
-                    <Wifi className="w-5 h-5 text-ink" />
+                    <Wifi className="w-5 h-5 text-accent" />
                     <div className="text-left">
-                      <p className="font-medium text-ink">Manage NFC Cards</p>
-                      <p className="text-sm text-stone-500">View and update card destinations</p>
+                      <p className="font-medium text-foreground">Manage NFC Cards</p>
+                      <p className="text-sm text-muted">View and update card destinations</p>
                     </div>
                   </div>
-                  <span className="text-stone-400">→</span>
+                  <span className="text-muted group-hover:text-accent transition-colors">→</span>
                 </button>
-              </div>
+              </Card>
             </div>
           )}
 
           {/* Cards Tab */}
           {activeTab === 'cards' && (
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink mb-2">
-                NFC Cards
-              </h1>
-              <p className="text-stone-500 mb-8">
-                Manage your NFC cards and change destination URLs.
-              </p>
+            <div className="animate-fade-in">
+              <div className="mb-8">
+                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground mb-2">
+                  Your Cards
+                </h1>
+                <p className="text-muted">
+                  Manage your NFC cards and change destination URLs.
+                </p>
+              </div>
 
               {cards.length === 0 ? (
-                <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
-                  <Wifi className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-ink mb-2">No Cards Yet</h3>
-                  <p className="text-stone-500">
-                    Contact admin to get NFC cards assigned to your business.
-                  </p>
-                </div>
+                <EmptyState
+                  icon={<Wifi className="w-6 h-6 text-muted" />}
+                  title="No cards yet"
+                  description="Cards assigned to your business will appear here."
+                />
               ) : (
-                <div className="space-y-4">
+                <div className="grid gap-4">
                   {cards.map((card) => (
-                    <div key={card._id} className="bg-white rounded-xl border border-stone-200 p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-semibold text-ink">{card.label}</h3>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              card.isActive 
-                                ? 'bg-green-50 text-green-700' 
-                                : 'bg-red-50 text-red-700'
-                            }`}>
-                              {card.isActive ? 'Active' : 'Inactive'}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-stone-500">
-                            <span>Card ID:</span>
-                            <code className="px-2 py-0.5 bg-stone-100 rounded text-xs">
-                              {card.cardId}
-                            </code>
-                            <button
-                              onClick={() => handleCopy(card.cardId, card._id)}
-                              className="text-stone-400 hover:text-ink"
-                            >
-                              {copied === card._id ? (
-                                <Check className="w-3 h-3 text-green-500" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => {
-                            setEditingCard(editingCard === card._id ? null : card._id);
-                            setNewUrl(card.destinationUrl);
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-ink bg-stone-100 rounded-lg hover:bg-stone-200"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          Edit URL
-                        </button>
-                      </div>
-
-                      <div className="text-sm text-stone-600 mb-3">
-                        <span className="text-stone-400">Destination: </span>
-                        <span className="break-all">{card.destinationUrl}</span>
-                      </div>
-
-                      {card.stats && (
-                        <div className="flex items-center gap-4 text-xs text-stone-400">
-                          <span>{card.stats.totalScans} total scans</span>
-                          <span>{card.stats.todayScans} today</span>
-                        </div>
-                      )}
-
-                      {/* Edit Form */}
-                      <AnimatePresence>
-                        {editingCard === card._id && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="mt-4 pt-4 border-t border-stone-100"
-                          >
-                            <label className="text-sm font-medium text-ink block mb-2">
-                              New Destination URL
-                            </label>
-                            <div className="flex gap-2">
-                              <input
-                                type="url"
-                                value={newUrl}
-                                onChange={(e) => setNewUrl(e.target.value)}
-                                placeholder="https://g.page/r/your-review-link"
-                                className="flex-1 px-4 py-2.5 rounded-lg border border-stone-200 focus:border-ink outline-none"
-                              />
-                              <button
-                                onClick={() => handleUpdateDestination(card._id)}
-                                disabled={saving}
-                                className="px-5 py-2.5 bg-ink text-white rounded-lg font-medium disabled:opacity-50"
-                              >
-                                {saving ? 'Saving...' : 'Save'}
-                              </button>
-                              <button
-                                onClick={() => setEditingCard(null)}
-                                className="px-3 py-2.5 text-stone-400 hover:text-ink"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
+                    <NFCCard
+                      key={card._id}
+                      cardId={card.cardId}
+                      label={card.label}
+                      status={card.isActive ? 'active' : 'suspended'}
+                      destinationUrl={card.destinationUrl}
+                      totalScans={card.stats?.totalScans}
+                      todayScans={card.stats?.todayScans}
+                      onEdit={() => {
+                        setEditingCard(card._id);
+                        setNewUrl(card.destinationUrl);
+                      }}
+                    />
                   ))}
                 </div>
               )}
@@ -483,6 +384,53 @@ export default function DashboardPage() {
           )}
         </div>
       </main>
+
+      {/* Edit Destination Modal */}
+      <Modal
+        isOpen={!!editingCard}
+        onClose={() => {
+          setEditingCard(null);
+          setNewUrl('');
+        }}
+        title="Change Destination"
+      >
+        <div className="p-6">
+          <p className="text-sm text-muted mb-4">
+            Where should this card send customers?
+          </p>
+          
+          <div className="space-y-4">
+            <Input
+              label="Destination URL"
+              type="url"
+              value={newUrl}
+              onChange={(e) => setNewUrl(e.target.value)}
+              placeholder="https://g.page/r/your-business"
+            />
+            
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setEditingCard(null);
+                  setNewUrl('');
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => editingCard && handleUpdateDestination(editingCard)}
+                loading={saving}
+                className="flex-1"
+              >
+                Save Destination
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

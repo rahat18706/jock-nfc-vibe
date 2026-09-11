@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Wifi, ArrowRight, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Wifi, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Button, Input } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../lib/api';
 
@@ -24,9 +24,6 @@ export default function LoginPage() {
 
     try {
       await login(username, password);
-      
-      // Redirect based on role after successful login
-      // The AuthContext will have the user data now
       navigate(from, { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
@@ -40,63 +37,52 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafaf9] flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
       <div className="p-5 sm:p-6">
-        <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-stone-500 hover:text-ink transition-colors">
+        <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" />
           Back
         </Link>
       </div>
 
       <div className="flex-1 flex items-center justify-center px-5 pb-12">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-[400px]"
-        >
+        <div className="w-full max-w-[400px] animate-slide-up">
           {/* Logo */}
           <div className="flex items-center gap-2.5 mb-10">
-            <div className="w-9 h-9 rounded-xl bg-ink flex items-center justify-center">
-              <Wifi className="w-4 h-4 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
+              <Wifi className="w-4 h-4 text-accent" />
             </div>
-            <span className="text-xl font-semibold tracking-tight text-ink">tapreview</span>
+            <span className="text-xl font-semibold tracking-tight text-foreground">TapReview</span>
           </div>
 
           {/* Heading */}
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink mb-2">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground mb-2">
             Welcome back
           </h1>
-          <p className="text-stone-500 mb-8">
-            Log in with credentials provided by your admin.
+          <p className="text-muted mb-8">
+            Sign in with credentials provided by your admin.
           </p>
 
           {error && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm"
-            >
+            <div className="mb-5 p-3.5 rounded-xl bg-error/10 border border-error/20 text-error text-sm animate-slide-down">
               {error}
-            </motion.div>
+            </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-ink block mb-2">Username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="your-username"
-                className="input-premium"
-                required
-              />
-            </div>
+            <Input
+              label="Username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="your-username"
+              required
+              autoComplete="username"
+            />
 
             <div>
-              <label className="text-sm font-medium text-ink block mb-2">Password</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Password</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -105,69 +91,36 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   className="input-premium pr-11"
                   required
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-ink transition-colors p-1"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 rounded border-stone-300 text-ink focus:ring-ink/20" />
-                <span className="text-sm text-stone-500">Remember me</span>
-              </label>
-              <button type="button" className="text-sm text-ink font-medium hover:underline">
-                Forgot password?
-              </button>
-            </div>
-
-            <button
+            <Button
               type="submit"
-              disabled={loading}
-              className="w-full btn-primary py-3.5 rounded-xl font-medium mt-6 disabled:opacity-50"
+              variant="primary"
+              size="lg"
+              loading={loading}
+              className="w-full"
             >
-              <span className="flex items-center justify-center gap-2">
-                {loading ? (
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <>Log in <ArrowRight className="w-4 h-4" /></>
-                )}
-              </span>
-            </button>
+              Sign in
+            </Button>
           </form>
 
-          {/* Info box */}
-          <div className="mt-8 p-4 rounded-xl bg-stone-100/70 border border-stone-200/50">
-            <p className="text-xs font-medium text-ink mb-1">Credentials set by admin</p>
-            <p className="text-xs text-stone-500 leading-relaxed">
-              Your username and password were created by your account administrator. 
-              Contact them if you need a password reset.
-            </p>
-          </div>
-
-          {/* Demo shortcuts */}
-          <div className="mt-6 flex flex-col gap-2">
-            <button
-              onClick={() => { setUsername('owner'); setPassword('demo'); }}
-              className="w-full text-left p-3 rounded-xl border border-stone-200 hover:border-stone-300 hover:bg-white transition-all text-sm"
-            >
-              <span className="text-stone-400 text-xs">Demo →</span>
-              <p className="text-ink font-medium text-sm">Business Dashboard</p>
-            </button>
-            <button
-              onClick={() => { setUsername('admin'); setPassword('admin'); }}
-              className="w-full text-left p-3 rounded-xl border border-stone-200 hover:border-stone-300 hover:bg-white transition-all text-sm"
-            >
-              <span className="text-stone-400 text-xs">Demo →</span>
-              <p className="text-ink font-medium text-sm">Admin Panel</p>
+          <div className="mt-6 text-center">
+            <button className="text-sm text-muted hover:text-accent transition-colors">
+              Forgot password?
             </button>
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
